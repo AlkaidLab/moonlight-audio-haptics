@@ -48,6 +48,7 @@ target_compile_definitions(moonlight_haptics_core
     PUBLIC MOONLIGHT_HAPTICS_STATIC=1
 )
 set_target_properties(moonlight_haptics_core PROPERTIES
+    EXPORT_NAME haptics
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
     POSITION_INDEPENDENT_CODE ON
@@ -62,9 +63,15 @@ else()
 endif()
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+set(MOONLIGHT_HAPTICS_CMAKE_INSTALL_DIR
+    "${CMAKE_INSTALL_LIBDIR}/cmake/moonlight_haptics")
+
 install(TARGETS moonlight_haptics_core
     EXPORT moonlight_haptics_targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE THIRD_PARTY_NOTICES.md ALGORITHM_PROVENANCE.md
@@ -72,7 +79,22 @@ install(FILES LICENSE THIRD_PARTY_NOTICES.md ALGORITHM_PROVENANCE.md
 install(EXPORT moonlight_haptics_targets
     FILE moonlight_haptics_targets.cmake
     NAMESPACE moonlight::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/moonlight-haptics
+    DESTINATION ${MOONLIGHT_HAPTICS_CMAKE_INSTALL_DIR}
+)
+configure_package_config_file(
+    cmake/moonlight_hapticsConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/moonlight_hapticsConfig.cmake"
+    INSTALL_DESTINATION ${MOONLIGHT_HAPTICS_CMAKE_INSTALL_DIR}
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/moonlight_hapticsConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMinorVersion
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/moonlight_hapticsConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/moonlight_hapticsConfigVersion.cmake"
+    DESTINATION ${MOONLIGHT_HAPTICS_CMAKE_INSTALL_DIR}
 )
 
 if(MOONLIGHT_HAPTICS_BUILD_TESTS)

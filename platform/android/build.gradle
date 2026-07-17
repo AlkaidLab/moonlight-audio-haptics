@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'com.moonlight.haptics'
-version = '0.5.14-SNAPSHOT'
+version = (findProperty('sdkVersion') ?: '0.5.14-SNAPSHOT').toString()
 
 android {
     namespace 'com.moonlight.haptics.android'
@@ -79,6 +79,24 @@ publishing {
             groupId = project.group
             artifactId = 'moonlight-haptics-android'
             version = project.version
+
+            pom {
+                name = 'Moonlight Audio Haptics Android'
+                description = 'Portable real-time audio-to-haptics SDK and Android renderer'
+                url = 'https://github.com/AlkaidLab/moonlight-audio-haptics'
+                licenses {
+                    license {
+                        name = 'Apache License 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/AlkaidLab/moonlight-audio-haptics.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/AlkaidLab/moonlight-audio-haptics.git'
+                    url = 'https://github.com/AlkaidLab/moonlight-audio-haptics'
+                }
+            }
 
             afterEvaluate {
                 from components.release

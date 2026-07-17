@@ -1,6 +1,10 @@
 /build/
+/consumer-build/
+/dist/
+/install/
 /platform/android/build/
 /platform/android/.gradle/
 /platform/android/.cxx/
+/platform/android/local.properties
 __pycache__/
 *.pyc

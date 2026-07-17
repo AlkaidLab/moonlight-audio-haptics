@@ -2,7 +2,8 @@
 
 # Moonlight Audio Haptics SDK
 
-Portable C++17 audio-to-haptics core shared by HarmonyOS and Android.
+Portable C++17 audio-to-haptics core shared by Android, HarmonyOS and future
+server-side hosts such as Sunshine.
 
 Version 0.5 keeps the stable ABI v1 and emits portable haptic IR from mono or
 multichannel PCM. It combines channel-aware spectral energy fusion, PCEN-style
@@ -38,9 +39,9 @@ transients. MUSIC feature and authoring paths are unchanged.
 ## Build and test
 
 ```bash
-cmake -S audio-haptics-sdk -B audio-haptics-sdk/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build audio-haptics-sdk/build
-ctest --test-dir audio-haptics-sdk/build --output-on-failure
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
 The Android adapter is an independently publishable AAR. It owns the native
@@ -53,16 +54,21 @@ arbitration, and phone/gamepad routing; they should not re-author generic scene
 gain, envelopes, transient duration, or continuous-groove curves.
 
 ```bash
-./gradlew -p audio-haptics-sdk/platform/android testDebugUnitTest assembleRelease
+./platform/android/gradlew -p platform/android testDebugUnitTest lintRelease assembleRelease
 ```
 
 The resulting development artifact is
 `platform/android/build/outputs/aar/moonlight-haptics-android-release.aar`.
 Maven coordinates are
-`com.moonlight.haptics:moonlight-haptics-android:0.5.14-SNAPSHOT`.
+`com.moonlight.haptics:moonlight-haptics-android:<version>`. Tagged releases
+publish the checksum-verified AAR as a GitHub Release asset; Maven repository
+publication will be added after the public API reaches its next stability gate.
 
-The library is also consumed as the CMake target `moonlight::haptics` via
-`add_subdirectory` from the HarmonyOS module and the P0 host evaluator.
+The library can be consumed as the CMake target `moonlight::haptics` via
+`add_subdirectory`, or installed and located by downstream projects with
+`find_package(moonlight_haptics CONFIG REQUIRED)`. During the source-consumption
+transition, consumers must pin an immutable commit SHA and keep the matching
+human-readable release tag in a comment.
 
 ## ABI rules
 

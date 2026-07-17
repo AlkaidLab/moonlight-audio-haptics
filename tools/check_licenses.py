@@ -29,7 +29,16 @@ FORBIDDEN_SOURCE_MARKERS = (
     "GPL-3.0",
     "AGPL-",
 )
-SKIP_DIRS = {"build", ".cxx", ".git", ".gradle", "__pycache__"}
+SKIP_DIRS = {
+    "build",
+    "consumer-build",
+    "dist",
+    "install",
+    ".cxx",
+    ".git",
+    ".gradle",
+    "__pycache__",
+}
 
 
 def iter_source_files(root: Path):

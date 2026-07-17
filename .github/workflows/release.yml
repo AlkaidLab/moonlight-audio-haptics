@@ -1,0 +1,64 @@
+name: SDK Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: platform/android/**/*.gradle*
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358
+
+      - name: Validate tag and build AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+          python tools/check_version.py .
+          python tools/check_licenses.py .
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+          ctest --test-dir build -C Release --output-on-failure
+          chmod +x platform/android/gradlew
+          ./platform/android/gradlew -p platform/android clean testDebugUnitTest lintRelease assembleRelease \
+            -PsdkVersion="${VERSION}" --no-daemon
+
+      - name: Package release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          mkdir -p dist
+          cp platform/android/build/outputs/aar/moonlight-haptics-android-release.aar \
+            "dist/moonlight-haptics-android-${VERSION}.aar"
+          git archive --format=tar.gz \
+            --prefix="moonlight-audio-haptics-${VERSION}/" \
+            -o "dist/moonlight-audio-haptics-${VERSION}-source.tar.gz" HEAD
+          (cd dist && sha256sum *.aar *.tar.gz > SHA256SUMS)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" dist/*
+          --verify-tag
+          --title "Moonlight Audio Haptics SDK ${GITHUB_REF_NAME#v}"
+          --generate-notes
