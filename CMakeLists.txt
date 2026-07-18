@@ -24,6 +24,30 @@ option(MOONLIGHT_HAPTICS_BUILD_TESTS
     ${_MOONLIGHT_HAPTICS_TESTS_DEFAULT}
 )
 
+# Keep upstream C sources in an object library so project-written code retains
+# the SDK's strict warning profile without rewriting pinned third-party source.
+add_library(moonlight_haptics_fvad_objects OBJECT
+    third_party/libfvad/src/fvad.c
+    third_party/libfvad/src/signal_processing/division_operations.c
+    third_party/libfvad/src/signal_processing/energy.c
+    third_party/libfvad/src/signal_processing/get_scaling_square.c
+    third_party/libfvad/src/signal_processing/resample_48khz.c
+    third_party/libfvad/src/signal_processing/resample_by_2_internal.c
+    third_party/libfvad/src/signal_processing/resample_fractional.c
+    third_party/libfvad/src/signal_processing/spl_inl.c
+    third_party/libfvad/src/vad/vad_core.c
+    third_party/libfvad/src/vad/vad_filterbank.c
+    third_party/libfvad/src/vad/vad_gmm.c
+    third_party/libfvad/src/vad/vad_sp.c
+)
+target_include_directories(moonlight_haptics_fvad_objects PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libfvad/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libfvad/src
+)
+set_target_properties(moonlight_haptics_fvad_objects PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
 add_library(moonlight_haptics_core STATIC
     src/core/audio_haptics_engine.cpp
     src/core/causal_onset_detector.cpp
@@ -32,8 +56,11 @@ add_library(moonlight_haptics_core STATIC
     src/core/game_scene_author.cpp
     src/core/music_scene_author.cpp
     src/core/rhythm_activation_extractor.cpp
+    src/core/speech_detector.cpp
+    src/core/speech_presence_estimator.cpp
     src/dsp/aosp_haptic_envelope.cpp
     src/dsp/real_fft.cpp
+    $<TARGET_OBJECTS:moonlight_haptics_fvad_objects>
 )
 add_library(moonlight::haptics ALIAS moonlight_haptics_core)
 
@@ -43,6 +70,7 @@ target_include_directories(moonlight_haptics_core
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libfvad/include
 )
 target_compile_definitions(moonlight_haptics_core
     PUBLIC MOONLIGHT_HAPTICS_STATIC=1
@@ -76,6 +104,9 @@ install(TARGETS moonlight_haptics_core
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE THIRD_PARTY_NOTICES.md ALGORITHM_PROVENANCE.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/moonlight-haptics)
+install(FILES third_party/libfvad/LICENSE
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/moonlight-haptics/licenses
+    RENAME libfvad-LICENSE)
 install(EXPORT moonlight_haptics_targets
     FILE moonlight_haptics_targets.cmake
     NAMESPACE moonlight::
@@ -176,6 +207,17 @@ if(MOONLIGHT_HAPTICS_BUILD_TESTS)
         moonlight_haptics_percussive_feature_test)
     add_test(NAME moonlight_haptics_percussive_feature
         COMMAND moonlight_haptics_percussive_feature_test)
+
+    add_executable(moonlight_haptics_speech_presence_test
+        tests/speech_presence_estimator_test.cpp)
+    target_include_directories(moonlight_haptics_speech_presence_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(moonlight_haptics_speech_presence_test
+        PRIVATE moonlight_haptics_core)
+    moonlight_haptics_enable_test_assertions(
+        moonlight_haptics_speech_presence_test)
+    add_test(NAME moonlight_haptics_speech_presence
+        COMMAND moonlight_haptics_speech_presence_test)
 
     add_test(
         NAME moonlight_haptics_license_check

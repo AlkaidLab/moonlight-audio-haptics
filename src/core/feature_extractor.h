@@ -23,6 +23,11 @@ struct FeatureFrame {
     float percussiveSalience = 0.0F;
     float harmonicSalience = 0.0F;
     float percussiveLowBandRatio = 0.0F;
+    // Dialogue-aware GAME features. Speech probability and centre dominance
+    // come from the causal VAD side path; voiceBandRatio comes from this STFT.
+    float speechProbability = 0.0F;
+    float centerDominance = 0.5F;
+    float voiceBandRatio = 0.0F;
     float rms = 0.0F;
     float peak = 0.0F;
     float lowBandRatio = 0.0F;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Fail SDK builds when sources violate the Apache-only boundary."""
+"""Fail SDK builds when sources violate the reviewed license boundary."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from pathlib import Path
 
 
 SPDX = "SPDX-License-Identifier: Apache-2.0"
+REVIEWED_THIRD_PARTY_PREFIXES = {
+    ("third_party", "libfvad"),
+}
 SOURCE_SUFFIXES = {
     ".c",
     ".cc",
@@ -62,12 +65,50 @@ def check(root: Path) -> list[str]:
     notices_path = root / "THIRD_PARTY_NOTICES.md"
     if not notices_path.exists():
         errors.append("missing THIRD_PARTY_NOTICES.md")
+    else:
+        notices_text = notices_path.read_text(encoding="utf-8")
+        if "libfvad" not in notices_text or "532ab666" not in notices_text:
+            errors.append("THIRD_PARTY_NOTICES.md: missing pinned libfvad notice")
+
+    libfvad_license_path = root / "third_party/libfvad/LICENSE"
+    if not libfvad_license_path.exists():
+        errors.append("third_party/libfvad/LICENSE: missing BSD-3-Clause text")
+    else:
+        libfvad_license = libfvad_license_path.read_text(encoding="utf-8")
+        if ("Redistribution and use in source and binary forms" not in
+                libfvad_license or
+                "Neither the name of Google" not in libfvad_license):
+            errors.append("third_party/libfvad/LICENSE: unexpected license text")
+
+    aar_license_path = (
+        root / "platform/android/src/main/resources/META-INF/LICENSE.libfvad"
+    )
+    if not aar_license_path.exists():
+        errors.append("Android AAR libfvad license resource is missing")
+    else:
+        aar_license = aar_license_path.read_text(encoding="utf-8")
+        if ("Redistribution and use in source and binary forms" not in
+                aar_license or "Neither the name of Google" not in aar_license):
+            errors.append("Android AAR libfvad license resource is incomplete")
+
+    aar_notice_path = (
+        root /
+        "platform/android/src/main/resources/META-INF/NOTICE.moonlight-audio-haptics"
+    )
+    if not aar_notice_path.exists():
+        errors.append("Android AAR third-party notice resource is missing")
+    else:
+        aar_notice = aar_notice_path.read_text(encoding="utf-8")
+        if "libfvad" not in aar_notice or "532ab666" not in aar_notice:
+            errors.append("Android AAR third-party notice resource is incomplete")
 
     for path in iter_source_files(root):
         text = path.read_text(encoding="utf-8")
         first_lines = "\n".join(text.splitlines()[:5])
         relative = path.relative_to(root)
-        if SPDX not in first_lines:
+        prefix = tuple(relative.parts[:2])
+        reviewed_third_party = prefix in REVIEWED_THIRD_PARTY_PREFIXES
+        if not reviewed_third_party and SPDX not in first_lines:
             errors.append(f"{relative}: missing Apache-2.0 SPDX in first 5 lines")
         if path.resolve() != Path(__file__).resolve():
             for marker in FORBIDDEN_SOURCE_MARKERS:
@@ -85,7 +126,7 @@ def main() -> int:
         for error in errors:
             print(f"license-check: {error}", file=sys.stderr)
         return 1
-    print("license-check: Apache-2.0 SDK boundary OK")
+    print("license-check: reviewed permissive SDK boundary OK")
     return 0
 
 

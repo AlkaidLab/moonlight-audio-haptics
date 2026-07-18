@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Verify that all public SDK version declarations match VERSION."""
+"""Verify that all public SDK version declarations match VERSION.txt."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def main() -> int:
     parser.add_argument("root", type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
-    version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    version = (root / "VERSION.txt").read_text(encoding="utf-8").strip()
 
     checks = (
         (

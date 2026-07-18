@@ -92,10 +92,11 @@ human-readable release tag in a comment.
 
 ## License boundary
 
-This directory is Apache-2.0 and has no third-party runtime binary dependency.
-Its FFT and spectral detector are project-written implementations; its portable
-haptic-envelope filter chain is attributed to the Apache-2.0 AOSP
-HapticGenerator. See `ALGORITHM_PROVENANCE.md` and `THIRD_PARTY_NOTICES.md`. It
-must not contain or link aubio/GPL sources.
+This directory is Apache-2.0 and has no third-party runtime binary or model
+dependency. Its FFT and spectral detector are project-written implementations;
+its portable haptic-envelope filter chain is attributed to the Apache-2.0 AOSP
+HapticGenerator. The GAME dialogue side path bundles the BSD-3-Clause libfvad
+source at a pinned commit. See `ALGORITHM_PROVENANCE.md` and
+`THIRD_PARTY_NOTICES.md`. It must not contain or link aubio/GPL sources.
 The GPL host application may link this SDK, while the SDK remains independently
 distributable under Apache-2.0.

@@ -110,6 +110,12 @@ actuator-carrier phase ripple and does not add look-ahead.
 - `src/core/causal_rhythm_clock.cpp` uses only current and past activation,
   allocates no process-time memory, and never reinforces a predicted beat
   without current acoustic support.
+- `src/core/speech_detector.cpp` wraps the pinned BSD-3-Clause libfvad/WebRTC
+  six-band GMM VAD. `speech_presence_estimator.cpp` supplies causal 10 ms
+  frames, fixed-capacity downmixing/resampling, stereo-centre evidence, and
+  attack/release smoothing. `GameSceneAuthor` applies the resulting dialogue
+  score only to haptic intent and continuously bypasses the mask for physical
+  impact evidence; decoded audio is never modified.
 - `src/dsp/aosp_haptic_envelope.cpp` has per-channel causal IIR state and no
   process-time allocation. Its source attribution is also recorded in
   `THIRD_PARTY_NOTICES.md`.
