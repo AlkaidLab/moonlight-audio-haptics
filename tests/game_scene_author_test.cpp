@@ -219,6 +219,27 @@ void AssertDialogueSoftMaskRejectsAmbiguousMouthOnset() {
     assert(filtered.transientAmplitude == 0.0F);
 }
 
+void AssertDialogueSoftMaskDucksAcceptedTransient() {
+    const auto onset = Onset(0.92F);
+    auto baselineFrame = SkillAttackFrame();
+    moonlight::haptics::core::GameSceneAuthor baselineAuthor;
+    const auto baseline = baselineAuthor.Process(
+        0.0F, 0.22F, 0.70F, true, baselineFrame, onset);
+    assert(baseline.hasTransient);
+
+    auto dialogueFrame = SkillAttackFrame();
+    dialogueFrame.speechProbability = 0.90F;
+    dialogueFrame.centerDominance = 0.95F;
+    dialogueFrame.voiceBandRatio = 0.85F;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+    const auto ducked = dialogueAuthor.Process(
+        0.0F, 0.22F, 0.70F, true, dialogueFrame, onset);
+
+    assert(ducked.hasTransient);
+    assert(ducked.transientAmplitude > 0.0F);
+    assert(ducked.transientAmplitude < baseline.transientAmplitude);
+}
+
 void AssertPhysicalImpactBypassesDialogueMask() {
     auto impactFrame = PhysicalImpactFrame();
     moonlight::haptics::core::GameSceneAuthor baselineAuthor;
@@ -259,6 +280,39 @@ void AssertDialogueCannotStartAmbiguousContinuousBed() {
     }
 }
 
+void AssertDialogueDucksActiveContinuousBed() {
+    const moonlight::haptics::core::OnsetResult noOnset;
+    const auto baselineFrame = DialogueBedFrame();
+    moonlight::haptics::core::GameSceneAuthor baselineAuthor;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+
+    float baselineAmplitude = 0.0F;
+    float dialogueAmplitude = 0.0F;
+    for (uint32_t hop = 0U; hop < 20U; ++hop) {
+        baselineAmplitude = baselineAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+        dialogueAmplitude = dialogueAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+    }
+    assert(baselineAmplitude > 0.0F);
+    assert(dialogueAmplitude == baselineAmplitude);
+
+    auto dialogueFrame = DialogueBedFrame();
+    dialogueFrame.speechProbability = 0.98F;
+    for (uint32_t hop = 0U; hop < 20U; ++hop) {
+        baselineAmplitude = baselineAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+        dialogueAmplitude = dialogueAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, dialogueFrame, noOnset)
+                                .continuousAmplitude;
+    }
+    assert(dialogueAmplitude > 0.0F);
+    assert(dialogueAmplitude < baselineAmplitude);
+}
+
 } // namespace
 
 int main() {
@@ -269,7 +323,9 @@ int main() {
     AssertStableBgmBeatIsSuppressedButImpactBypassesIt();
     AssertFatigueNeverReducesTransient();
     AssertDialogueSoftMaskRejectsAmbiguousMouthOnset();
+    AssertDialogueSoftMaskDucksAcceptedTransient();
     AssertPhysicalImpactBypassesDialogueMask();
     AssertDialogueCannotStartAmbiguousContinuousBed();
+    AssertDialogueDucksActiveContinuousBed();
     return 0;
 }

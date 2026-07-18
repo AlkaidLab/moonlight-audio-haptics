@@ -108,13 +108,15 @@ static int32_t WeightedAverage(int16_t* data, int16_t offset,
   return weighted_average;
 }
 
-// An s16 x s32 -> s32 multiplication that's allowed to overflow. (It's still
-// undefined behavior, so not a good idea; this just makes UBSan ignore the
-// violation, so that our old code can continue to do what it's always been
-// doing.)
-static inline int32_t RTC_NO_SANITIZE("signed-integer-overflow")
-    OverflowingMulS16ByS32ToS32(int16_t a, int32_t b) {
-  return a * b;
+// An s16 x s32 -> s32 multiplication with explicit modulo-2^32 wrapping.
+// Reconstruct the signed result without relying on implementation-defined
+// unsigned-to-signed conversion or signed-overflow behavior.
+static inline int32_t OverflowingMulS16ByS32ToS32(int16_t a, int32_t b) {
+  const uint32_t product = (uint32_t)(int32_t)a * (uint32_t)b;
+  if (product <= INT32_MAX) {
+    return (int32_t)product;
+  }
+  return -1 - (int32_t)(UINT32_MAX - product);
 }
 
 // Calculates the probabilities for both speech and background noise using
@@ -680,5 +682,4 @@ int WebRtcVad_CalcVad8khz(VadInstT* inst, const int16_t* speech_frame,
 
     return inst->vad;
 }
-
 

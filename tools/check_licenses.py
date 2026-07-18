@@ -67,7 +67,9 @@ def check(root: Path) -> list[str]:
         errors.append("missing THIRD_PARTY_NOTICES.md")
     else:
         notices_text = notices_path.read_text(encoding="utf-8")
-        if "libfvad" not in notices_text or "532ab666" not in notices_text:
+        if ("libfvad" not in notices_text or "532ab666" not in notices_text or
+                "third_party/libfvad/PATENTS" not in notices_text or
+                "third_party/libfvad/PATCHES.md" not in notices_text):
             errors.append("THIRD_PARTY_NOTICES.md: missing pinned libfvad notice")
 
     libfvad_license_path = root / "third_party/libfvad/LICENSE"
@@ -80,6 +82,49 @@ def check(root: Path) -> list[str]:
                 "Neither the name of Google" not in libfvad_license):
             errors.append("third_party/libfvad/LICENSE: unexpected license text")
 
+    libfvad_patents_path = root / "third_party/libfvad/PATENTS"
+    libfvad_patents = ""
+    if not libfvad_patents_path.exists():
+        errors.append("third_party/libfvad/PATENTS: missing WebRTC patent grant")
+    else:
+        libfvad_patents = libfvad_patents_path.read_text(encoding="utf-8")
+        if ("Additional IP Rights Grant (Patents)" not in libfvad_patents or
+                "perpetual, worldwide, non-exclusive" not in libfvad_patents or
+                "patent rights granted to you" not in libfvad_patents):
+            errors.append("third_party/libfvad/PATENTS: unexpected grant text")
+
+    libfvad_patches_path = root / "third_party/libfvad/PATCHES.md"
+    if not libfvad_patches_path.exists():
+        errors.append("third_party/libfvad/PATCHES.md: missing local patch record")
+    else:
+        libfvad_patches = libfvad_patches_path.read_text(encoding="utf-8")
+        if ("vad_core.c" not in libfvad_patches or
+                "vad_sp.c" not in libfvad_patches or
+                "532ab666" not in libfvad_patches):
+            errors.append("third_party/libfvad/PATCHES.md: incomplete patch record")
+
+    upstream_path = root / "third_party/libfvad/UPSTREAM.md"
+    if not upstream_path.exists():
+        errors.append("third_party/libfvad/UPSTREAM.md: missing import record")
+    else:
+        upstream_text = upstream_path.read_text(encoding="utf-8")
+        if ("532ab666" not in upstream_text or
+                "PATENTS" not in upstream_text or
+                "PATCHES.md" not in upstream_text):
+            errors.append("third_party/libfvad/UPSTREAM.md: incomplete import record")
+
+    vad_core_path = root / "third_party/libfvad/src/vad/vad_core.c"
+    vad_sp_path = root / "third_party/libfvad/src/vad/vad_sp.c"
+    if vad_core_path.exists():
+        vad_core = vad_core_path.read_text(encoding="utf-8")
+        if ("const uint32_t product" not in vad_core or
+                "UINT32_MAX - product" not in vad_core):
+            errors.append("third_party/libfvad/src/vad/vad_core.c: safety patch missing")
+    if vad_sp_path.exists():
+        vad_sp = vad_sp_path.read_text(encoding="utf-8")
+        if "for (j = i; j < 15; j++)" not in vad_sp:
+            errors.append("third_party/libfvad/src/vad/vad_sp.c: bounds patch missing")
+
     aar_license_path = (
         root / "platform/android/src/main/resources/META-INF/LICENSE.libfvad"
     )
@@ -91,6 +136,16 @@ def check(root: Path) -> list[str]:
                 aar_license or "Neither the name of Google" not in aar_license):
             errors.append("Android AAR libfvad license resource is incomplete")
 
+    aar_patents_path = (
+        root / "platform/android/src/main/resources/META-INF/PATENTS.libfvad"
+    )
+    if not aar_patents_path.exists():
+        errors.append("Android AAR libfvad patent resource is missing")
+    else:
+        aar_patents = aar_patents_path.read_text(encoding="utf-8")
+        if not libfvad_patents or aar_patents != libfvad_patents:
+            errors.append("Android AAR libfvad patent resource differs from source grant")
+
     aar_notice_path = (
         root /
         "platform/android/src/main/resources/META-INF/NOTICE.moonlight-audio-haptics"
@@ -99,7 +154,9 @@ def check(root: Path) -> list[str]:
         errors.append("Android AAR third-party notice resource is missing")
     else:
         aar_notice = aar_notice_path.read_text(encoding="utf-8")
-        if "libfvad" not in aar_notice or "532ab666" not in aar_notice:
+        if ("libfvad" not in aar_notice or "532ab666" not in aar_notice or
+                "PATENTS.libfvad" not in aar_notice or
+                "PATCHES.md" not in aar_notice):
             errors.append("Android AAR third-party notice resource is incomplete")
 
     for path in iter_source_files(root):

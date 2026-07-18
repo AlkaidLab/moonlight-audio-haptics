@@ -24,8 +24,9 @@ option(MOONLIGHT_HAPTICS_BUILD_TESTS
     ${_MOONLIGHT_HAPTICS_TESTS_DEFAULT}
 )
 
-# Keep upstream C sources in an object library so project-written code retains
-# the SDK's strict warning profile without rewriting pinned third-party source.
+# Keep imported C sources in an object library so project-written code retains
+# the SDK's strict warning profile. Reviewed local corrections are documented
+# in third_party/libfvad/PATCHES.md.
 add_library(moonlight_haptics_fvad_objects OBJECT
     third_party/libfvad/src/fvad.c
     third_party/libfvad/src/signal_processing/division_operations.c
@@ -107,6 +108,12 @@ install(FILES LICENSE THIRD_PARTY_NOTICES.md ALGORITHM_PROVENANCE.md
 install(FILES third_party/libfvad/LICENSE
     DESTINATION ${CMAKE_INSTALL_DATADIR}/moonlight-haptics/licenses
     RENAME libfvad-LICENSE)
+install(FILES third_party/libfvad/PATENTS
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/moonlight-haptics/licenses
+    RENAME libfvad-PATENTS)
+install(FILES third_party/libfvad/PATCHES.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/moonlight-haptics/licenses
+    RENAME libfvad-PATCHES.md)
 install(EXPORT moonlight_haptics_targets
     FILE moonlight_haptics_targets.cmake
     NAMESPACE moonlight::

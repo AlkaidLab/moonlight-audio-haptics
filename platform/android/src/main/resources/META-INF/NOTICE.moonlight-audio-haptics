@@ -11,15 +11,19 @@ contains the following reviewed source adaptation and bundled source library.
 - Source: https://github.com/dpirch/libfvad
 - Pinned commit: `532ab666c20d3cfda38bca63abbb0f152706c369`
 - License: BSD 3-Clause
+- Additional grant: WebRTC `PATENTS`
 - Bundled path: `third_party/libfvad`
 
 Moonlight uses libfvad only to produce a 10 ms causal speech decision. A
 project-written wrapper performs fixed-capacity downmixing, resampling,
 probability smoothing, stereo-centre estimation, and physical-event bypass.
 No WebRTC networking, audio processing module, inference runtime, or model is
-included. The complete license text is distributed at
-`third_party/libfvad/LICENSE` and as `META-INF/LICENSE.libfvad` in the Android
-AAR.
+included. The complete license and patent grant are distributed at
+`third_party/libfvad/LICENSE` and `third_party/libfvad/PATENTS`, and as
+`META-INF/LICENSE.libfvad` and `META-INF/PATENTS.libfvad` in the Android AAR.
+Two local safety corrections are recorded in
+`third_party/libfvad/PATCHES.md`; all other imported source files match the
+pinned commit.
 
 ## Android Open Source Project HapticGenerator
 
