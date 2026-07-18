@@ -100,6 +100,7 @@ def check(root: Path) -> list[str]:
         libfvad_patches = libfvad_patches_path.read_text(encoding="utf-8")
         if ("vad_core.c" not in libfvad_patches or
                 "vad_sp.c" not in libfvad_patches or
+                "resample_by_2_internal.c" not in libfvad_patches or
                 "532ab666" not in libfvad_patches):
             errors.append("third_party/libfvad/PATCHES.md: incomplete patch record")
 
@@ -115,6 +116,10 @@ def check(root: Path) -> list[str]:
 
     vad_core_path = root / "third_party/libfvad/src/vad/vad_core.c"
     vad_sp_path = root / "third_party/libfvad/src/vad/vad_sp.c"
+    resample_path = (
+        root /
+        "third_party/libfvad/src/signal_processing/resample_by_2_internal.c"
+    )
     if vad_core_path.exists():
         vad_core = vad_core_path.read_text(encoding="utf-8")
         if ("const uint32_t product" not in vad_core or
@@ -124,6 +129,12 @@ def check(root: Path) -> list[str]:
         vad_sp = vad_sp_path.read_text(encoding="utf-8")
         if "for (j = i; j < 15; j++)" not in vad_sp:
             errors.append("third_party/libfvad/src/vad/vad_sp.c: bounds patch missing")
+    if resample_path.exists():
+        resample = resample_path.read_text(encoding="utf-8")
+        if resample.count("(int32_t)in[i << 1] * 32768") != 2:
+            errors.append(
+                "third_party/libfvad resampler: negative-shift safety patch missing"
+            )
 
     aar_license_path = (
         root / "platform/android/src/main/resources/META-INF/LICENSE.libfvad"

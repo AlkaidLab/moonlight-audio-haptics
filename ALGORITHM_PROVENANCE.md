@@ -111,7 +111,7 @@ actuator-carrier phase ripple and does not add look-ahead.
   allocates no process-time memory, and never reinforces a predicted beat
   without current acoustic support.
 - `src/core/speech_detector.cpp` wraps the pinned BSD-3-Clause libfvad/WebRTC
-  six-band GMM VAD. The upstream patent grant and two reviewed local safety
+  six-band GMM VAD. The upstream patent grant and three reviewed local safety
   corrections are recorded with the source import.
   `speech_presence_estimator.cpp` supplies causal 10 ms
   frames, fixed-capacity downmixing/resampling, stereo-centre evidence, and

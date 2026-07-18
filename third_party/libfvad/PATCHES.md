@@ -11,6 +11,9 @@ reviewed corrections:
    two's-complement result without C signed-overflow undefined behavior.
 2. `src/vad/vad_sp.c`: stop the expired-value shift at index 14 so it never
    reads element 16 from a 16-element channel window.
+3. `src/signal_processing/resample_by_2_internal.c`: replace two left shifts
+   of potentially negative PCM samples with range-equivalent multiplication,
+   avoiding C shift undefined behavior while preserving the Q15 conversion.
 
 These patches do not change the public libfvad API, frame sizes, VAD modes, or
 model constants.

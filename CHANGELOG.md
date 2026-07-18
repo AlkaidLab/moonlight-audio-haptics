@@ -13,7 +13,7 @@ while the public ABI has its own explicit version reported by
   introducing process-time allocation or look-ahead.
 - Fix the ndk-build source manifest and the Windows `<version>` header-name
   collision in standalone SDK source consumption.
-- Apply two documented libfvad safety corrections, distribute the upstream
+- Apply three documented libfvad safety corrections, distribute the upstream
   WebRTC patent grant, and verify both legal files in packaged artifacts.
 
 ## 0.5.14 - 2026-07-17

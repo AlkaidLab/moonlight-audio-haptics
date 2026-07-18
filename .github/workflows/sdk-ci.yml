@@ -76,16 +76,16 @@ jobs:
 
       - name: Configure ASan and UBSan
         run: >-
-          cmake -S . -B sanitizer-build
+          cmake -S . -B build/sanitizers
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
 
       - name: Build
-        run: cmake --build sanitizer-build
+        run: cmake --build build/sanitizers
 
       - name: Test
         env:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir sanitizer-build --output-on-failure
+        run: ctest --test-dir build/sanitizers --output-on-failure

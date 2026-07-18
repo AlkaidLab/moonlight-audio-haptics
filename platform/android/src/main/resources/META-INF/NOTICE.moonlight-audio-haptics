@@ -21,7 +21,7 @@ No WebRTC networking, audio processing module, inference runtime, or model is
 included. The complete license and patent grant are distributed at
 `third_party/libfvad/LICENSE` and `third_party/libfvad/PATENTS`, and as
 `META-INF/LICENSE.libfvad` and `META-INF/PATENTS.libfvad` in the Android AAR.
-Two local safety corrections are recorded in
+Three local safety corrections are recorded in
 `third_party/libfvad/PATCHES.md`; all other imported source files match the
 pinned commit.
 
