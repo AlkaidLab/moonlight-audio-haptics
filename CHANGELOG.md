@@ -15,6 +15,12 @@ while the public ABI has its own explicit version reported by
   collision in standalone SDK source consumption.
 - Apply three documented libfvad safety corrections, distribute the upstream
   WebRTC patent grant, and verify both legal files in packaged artifacts.
+- Add a pinned real-speech dialogue regression with physical-impact recall
+  guardrails, without distributing an additional corpus in SDK artifacts.
+- Define ABI v1 AUTO as a GAME compatibility alias and use neutral centre
+  evidence when multichannel input has no explicit channel layout.
+- Reduce Android renderer public configuration to the stable device-profile
+  opt-out; queue, timing, and throttling values remain internal SDK policy.
 
 ## 0.5.14 - 2026-07-17
 

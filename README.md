@@ -36,6 +36,15 @@ Continuous GAME intent requires persistent non-tonal low-frequency evidence,
 is capped at 0.24 in portable IR, and is fatigue-ducked without reducing
 transients. MUSIC feature and authoring paths are unchanged.
 
+Scene selection is explicit host policy. ABI v1 retains `AH_SCENE_AUTO` for
+compatibility, but the Core resolves it to GAME; it does not run a hidden scene
+classifier. Hosts implementing an automatic mode should select GAME or MUSIC
+from product context and update the engine configuration. Dialogue centre
+evidence is fully defined for mono and stereo input. For 3--8 channels the
+current ABI has no channel-layout mask, so the dialogue path uses a
+layout-agnostic downmix and neutral centre evidence rather than guessing which
+channel is centre. A future ABI may add an explicit channel layout.
+
 ## Build and test
 
 ```bash

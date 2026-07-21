@@ -89,3 +89,34 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: ctest --test-dir build/sanitizers --output-on-failure
+
+  dialogue-corpus:
+    name: Dialogue corpus (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download pinned libfvad speech fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://raw.githubusercontent.com/dpirch/libfvad/532ab666c20d3cfda38bca63abbb0f152706c369/tests/data/audio_tiny16.wav"
+          curl --fail --location --silent --show-error \
+            "${url}" -o "${RUNNER_TEMP}/audio_tiny16.wav"
+          echo "551d3f0282c5d5e1e32e76da97bd3532c38e6f4bb02a32510caf562d7c06ae9c  ${RUNNER_TEMP}/audio_tiny16.wav" \
+            | sha256sum --check --strict
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build/corpus
+          -DCMAKE_BUILD_TYPE=Release
+          -DMOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV="${RUNNER_TEMP}/audio_tiny16.wav"
+
+      - name: Build corpus regression
+        run: cmake --build build/corpus --target moonlight_haptics_dialogue_corpus_test
+
+      - name: Test corpus regression
+        run: >-
+          ctest --test-dir build/corpus
+          --output-on-failure
+          --tests-regex moonlight_haptics_dialogue_corpus

@@ -13,6 +13,11 @@ constexpr float kSpeechAttack = 0.65F;
 constexpr float kSpeechRelease = 0.10F;
 constexpr float kCenterSmoothing = 0.35F;
 constexpr float kMonoCenterPrior = 0.65F;
+constexpr float kNeutralCenterEvidence = 0.50F;
+
+float InitialCenterDominance(uint32_t channelCount) noexcept {
+    return channelCount == 1U ? kMonoCenterPrior : kNeutralCenterEvidence;
+}
 
 uint32_t SelectVadSampleRate(uint32_t sampleRate) noexcept {
     if (IsWebRtcVadSampleRate(sampleRate)) return sampleRate;
@@ -37,7 +42,7 @@ SpeechPresenceEstimator::SpeechPresenceEstimator(
       detector_(detector == nullptr
                     ? CreateWebRtcVadSpeechDetector(vadSampleRate_)
                     : std::move(detector)),
-      centerDominance_(channelCount == 2U ? 0.5F : kMonoCenterPrior) {}
+      centerDominance_(InitialCenterDominance(channelCount)) {}
 
 void SpeechPresenceEstimator::PushInterleavedSample(
     const int16_t* samples) noexcept {
@@ -99,11 +104,11 @@ void SpeechPresenceEstimator::CompleteVadFrame() noexcept {
     speechProbability_ += speechSmoothing *
         (speechTarget - speechProbability_);
 
-    float centerTarget = kMonoCenterPrior;
+    float centerTarget = InitialCenterDominance(channelCount_);
     if (channelCount_ == 2U) {
         const double total = centerMidEnergy_ + centerSideEnergy_;
         centerTarget = total <= 1.0e-9
-            ? 0.5F
+            ? kNeutralCenterEvidence
             : static_cast<float>(centerMidEnergy_ / total);
     }
     centerDominance_ += kCenterSmoothing *
@@ -122,7 +127,7 @@ void SpeechPresenceEstimator::Reset() noexcept {
     centerMidEnergy_ = 0.0;
     centerSideEnergy_ = 0.0;
     speechProbability_ = 0.0F;
-    centerDominance_ = channelCount_ == 2U ? 0.5F : kMonoCenterPrior;
+    centerDominance_ = InitialCenterDominance(channelCount_);
 }
 
 } // namespace moonlight::haptics::core

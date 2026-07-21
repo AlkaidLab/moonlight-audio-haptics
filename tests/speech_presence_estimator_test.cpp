@@ -37,6 +37,20 @@ void PushStereo(moonlight::haptics::core::SpeechPresenceEstimator& estimator,
     }
 }
 
+void AssertMultichannelUsesNeutralCenterEvidence() {
+    auto detector = std::make_unique<AlwaysSpeechDetector>();
+    moonlight::haptics::core::SpeechPresenceEstimator estimator(
+        16000U, 6U, std::move(detector));
+    const std::array<int16_t, 6U> centerOnly{
+        0, 0, 6000, 0, 0, 0};
+    for (uint32_t frame = 0U; frame < 1600U; ++frame) {
+        estimator.PushInterleavedSample(centerOnly.data());
+    }
+
+    assert(estimator.SpeechProbability() > 0.99F);
+    assert(std::abs(estimator.CenterDominance() - 0.5F) < 0.0001F);
+}
+
 void AssertArbitraryRateIsFramedWithoutAllocating() {
     auto detector = std::make_unique<AlwaysSpeechDetector>();
     AlwaysSpeechDetector* detectorView = detector.get();
@@ -105,6 +119,7 @@ void AssertBundledVadRecognizesVoicedPattern() {
 
 int main() {
     AssertArbitraryRateIsFramedWithoutAllocating();
+    AssertMultichannelUsesNeutralCenterEvidence();
     AssertBundledVadRejectsSilence();
     AssertBundledVadRecognizesVoicedPattern();
     return 0;

@@ -23,6 +23,9 @@ option(MOONLIGHT_HAPTICS_BUILD_TESTS
     "Build moonlight-haptics API and ABI tests"
     ${_MOONLIGHT_HAPTICS_TESTS_DEFAULT}
 )
+set(MOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV "" CACHE FILEPATH
+    "Optional pinned mono PCM16 WAV used by the dialogue corpus regression"
+)
 
 # Keep imported C sources in an object library so project-written code retains
 # the SDK's strict warning profile. Reviewed local corrections are documented
@@ -225,6 +228,23 @@ if(MOONLIGHT_HAPTICS_BUILD_TESTS)
         moonlight_haptics_speech_presence_test)
     add_test(NAME moonlight_haptics_speech_presence
         COMMAND moonlight_haptics_speech_presence_test)
+
+    if(MOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV)
+        if(NOT EXISTS "${MOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV}")
+            message(FATAL_ERROR
+                "Dialogue corpus WAV not found: "
+                "${MOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV}")
+        endif()
+        add_executable(moonlight_haptics_dialogue_corpus_test
+            tests/dialogue_corpus_test.cpp)
+        target_link_libraries(moonlight_haptics_dialogue_corpus_test
+            PRIVATE moonlight_haptics_core)
+        moonlight_haptics_enable_test_assertions(
+            moonlight_haptics_dialogue_corpus_test)
+        add_test(NAME moonlight_haptics_dialogue_corpus
+            COMMAND moonlight_haptics_dialogue_corpus_test
+                    "${MOONLIGHT_HAPTICS_DIALOGUE_CORPUS_WAV}")
+    endif()
 
     add_test(
         NAME moonlight_haptics_license_check

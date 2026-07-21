@@ -26,6 +26,8 @@ The host application owns PCM acquisition, scene/product policy, user strength,
 session orchestration, and phone/gamepad routing. It registers the AAR's opaque
 native session handle with its PCM bridge; it does not own `AhEngine` or copy an
 SDK IR struct. The first AAR does not promise a generic gamepad transport.
+`HapticFrame.SCENE_AUTO` is retained only as an ABI v1 alias for GAME; an Android
+host's automatic scene policy should select an explicit scene.
 
 ## Build
 

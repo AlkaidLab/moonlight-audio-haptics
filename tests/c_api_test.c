@@ -10,7 +10,7 @@ int main(void) {
     assert(ah_get_abi_version() == 1u);
     assert(strcmp(ah_get_version_string(), "0.5.14") == 0);
     assert(strcmp(ah_get_parameter_set_version(),
-                  "action-rpg-p4g-v5-dialogue") == 0);
+                  "action-rpg-p4g-v6-dialogue") == 0);
     assert(strcmp(ah_status_string(AH_STATUS_OK), "ok") == 0);
 
     AhConfig config;

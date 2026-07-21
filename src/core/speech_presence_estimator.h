@@ -26,6 +26,7 @@ public:
     void Reset() noexcept;
 
     float SpeechProbability() const noexcept { return speechProbability_; }
+    /** Stereo mid/side evidence; mono uses a prior and 3+ channels are neutral. */
     float CenterDominance() const noexcept { return centerDominance_; }
     uint32_t VadSampleRate() const noexcept { return vadSampleRate_; }
 

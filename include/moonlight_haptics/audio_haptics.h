@@ -42,6 +42,7 @@ typedef uint32_t AhScene;
 enum {
     AH_SCENE_GAME = 0,
     AH_SCENE_MUSIC = 1,
+    /* ABI v1 compatibility alias. The engine resolves AUTO to GAME. */
     AH_SCENE_AUTO = 2,
     AH_SCENE_UNKNOWN = 3
 };

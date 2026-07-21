@@ -51,7 +51,7 @@ class AndroidHapticRenderer(
         get() = deviceProfile.id
 
     private val vibrator: Vibrator? = AndroidHapticCapabilities.vibrator(context)
-    private val queue = SpscHapticFrameQueue(config.queueCapacity)
+    private val queue = SpscHapticFrameQueue(QUEUE_CAPACITY)
     private val ownedWorker = if (workerLooper == null) {
         HandlerThread(
             "moonlight-haptics-renderer",
@@ -277,9 +277,9 @@ class AndroidHapticRenderer(
             clockFramePosition = audioClockFramePosition.get(),
             clockSystemTimeUs = audioClockSystemTimeUs.get(),
             sampleRate = audioClockSampleRate.get().toInt(),
-            actuatorLeadUs = config.actuatorLeadMs * 1_000L,
-            staleDeadlineUs = config.transientStaleDeadlineMs * 1_000L,
-            maximumScheduleAheadUs = config.maximumScheduleAheadMs * 1_000L
+            actuatorLeadUs = ACTUATOR_LEAD_MS * 1_000L,
+            staleDeadlineUs = TRANSIENT_STALE_DEADLINE_MS * 1_000L,
+            maximumScheduleAheadUs = MAXIMUM_SCHEDULE_AHEAD_MS * 1_000L
         )
         timing.rawTargetVibrateTimeUs?.let { rawTargetUs ->
             val sampleRate = audioClockSampleRate.get().toInt()
@@ -323,21 +323,22 @@ class AndroidHapticRenderer(
         val continuous = deviceIntent.continuousAmplitude
         val transient = deviceIntent.transientAmplitude
         val selected = if (transientFlag) max(continuous, transient) else continuous
-        if (selected < config.minimumAmplitude) {
+        if (selected < MINIMUM_AMPLITUDE) {
             if (continuousChanged) stopInternal()
             return 0L
         }
 
         val now = SystemClock.elapsedRealtime()
         if (!transientFlag && active &&
-            abs(authoredContinuous - lastContinuousAmplitude) < config.continuousAmplitudeHysteresis
+            abs(authoredContinuous - lastContinuousAmplitude) <
+                CONTINUOUS_AMPLITUDE_HYSTERESIS
         ) {
             return 0L
         }
         val minimumInterval = if (transientFlag) {
-            config.transientMinimumIntervalMs
+            TRANSIENT_MINIMUM_INTERVAL_MS
         } else {
-            config.continuousMinimumIntervalMs
+            CONTINUOUS_MINIMUM_INTERVAL_MS
         }
         if (now - lastSubmitTimeMs < minimumInterval) return 0L
 
@@ -376,15 +377,15 @@ class AndroidHapticRenderer(
         val target = vibrator ?: return
         val generation = effectLeaseGuard.beginEffect()
         val duration = transientDurationMs.toLong().coerceIn(
-            config.minimumTransientDurationMs,
-            config.maximumTransientDurationMs
+            MINIMUM_TRANSIENT_DURATION_MS,
+            MAXIMUM_TRANSIENT_DURATION_MS
         )
         try {
             // A new vibrate() request supersedes the running effect. Avoid an
             // eager cancel here because it inserts a vendor-dependent gap.
-            if (continuous >= config.minimumAmplitude) {
+            if (continuous >= MINIMUM_AMPLITUDE) {
                 renderContinuous(target, continuous, transient, duration, hasTransient)
-            } else if (hasTransient && transient >= config.minimumAmplitude) {
+            } else if (hasTransient && transient >= MINIMUM_AMPLITUDE) {
                 renderTransient(target, transient, duration, sharpness.coerceIn(0f, 1f))
             } else {
                 stopInternal()
@@ -399,7 +400,7 @@ class AndroidHapticRenderer(
                 active = false
             }
         }
-        if (active && continuous >= config.minimumAmplitude && maximumContinuousHoldMs != null) {
+        if (active && continuous >= MINIMUM_AMPLITUDE && maximumContinuousHoldMs != null) {
             handler.postDelayed(
                 { stopBoundedContinuous(generation) },
                 maximumContinuousHoldMs
@@ -417,15 +418,15 @@ class AndroidHapticRenderer(
         val repeatIndex = if (hasTransient) 2 else 1
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && capabilities.hasAmplitudeControl) {
             val continuousLevel = amplitudeByte(continuous)
-            val effect = if (hasTransient && transient >= config.minimumAmplitude) {
+            val effect = if (hasTransient && transient >= MINIMUM_AMPLITUDE) {
                 VibrationEffect.createWaveform(
-                    longArrayOf(0L, duration, config.continuousSegmentMs),
+                    longArrayOf(0L, duration, CONTINUOUS_SEGMENT_MS),
                     intArrayOf(0, amplitudeByte(max(transient, continuous)), continuousLevel),
                     repeatIndex
                 )
             } else {
                 VibrationEffect.createWaveform(
-                    longArrayOf(0L, config.continuousSegmentMs),
+                    longArrayOf(0L, CONTINUOUS_SEGMENT_MS),
                     intArrayOf(0, continuousLevel),
                     repeatIndex
                 )
@@ -433,14 +434,14 @@ class AndroidHapticRenderer(
             vibrate(target, effect)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val timings = if (hasTransient) {
-                longArrayOf(0L, duration, config.continuousSegmentMs)
+                longArrayOf(0L, duration, CONTINUOUS_SEGMENT_MS)
             } else {
-                longArrayOf(0L, config.continuousSegmentMs)
+                longArrayOf(0L, CONTINUOUS_SEGMENT_MS)
             }
             vibrate(target, VibrationEffect.createWaveform(timings, repeatIndex))
         } else {
             @Suppress("DEPRECATION")
-            target.vibrate(config.continuousSegmentMs)
+            target.vibrate(CONTINUOUS_SEGMENT_MS)
         }
     }
 
@@ -545,6 +546,17 @@ class AndroidHapticRenderer(
 
     companion object {
         private const val WORKER_FENCE_TIMEOUT_MS = 2_000L
+        private const val MINIMUM_AMPLITUDE = 0.05f
+        private const val CONTINUOUS_AMPLITUDE_HYSTERESIS = 0.08f
+        private const val TRANSIENT_MINIMUM_INTERVAL_MS = 12L
+        private const val CONTINUOUS_MINIMUM_INTERVAL_MS = 100L
+        private const val MINIMUM_TRANSIENT_DURATION_MS = 20L
+        private const val MAXIMUM_TRANSIENT_DURATION_MS = 120L
+        private const val CONTINUOUS_SEGMENT_MS = 1_000L
+        private const val QUEUE_CAPACITY = 64
+        private const val ACTUATOR_LEAD_MS = 10L
+        private const val TRANSIENT_STALE_DEADLINE_MS = 25L
+        private const val MAXIMUM_SCHEDULE_AHEAD_MS = 500L
 
         // AudioTimestamp.nanoTime and native std::chrono::steady_clock both use
         // the System.nanoTime/CLOCK_MONOTONIC time domain on Android.
