@@ -26,6 +26,16 @@ models. Android actuator-class amplitude floors and durations are applied by
 Measured vendor compensation is isolated in explicit Renderer device profiles.
 Profiles are neutral for unknown devices and may be disabled with
 `HapticRenderConfig(enableDeviceProfiles = false)`.
+Renderer timing compensation follows the same rule: the neutral Android
+profile keeps the validated 10 ms request lead, and model-specific overrides
+require measured audio-to-motion evidence.
+Android 16 envelope limits and sampled frequency response, plus Android 14+
+resonant-frequency/Q-factor values, are captured as validated read-only
+capabilities. When both envelope limits and frequency response are valid, the
+Android renderer uses an exact supported frequency to shape the finite onset
+of a continuous effect, then joins the proven repeating amplitude bed without
+periodic envelope seams. Invalid or rejected vendor data keeps the legacy
+waveform unchanged.
 
 `GameSceneAuthor` uses a fixed-capacity causal approximation of
 median-filter HPSS plus SuperFlux-style frequency maximum filtering for a

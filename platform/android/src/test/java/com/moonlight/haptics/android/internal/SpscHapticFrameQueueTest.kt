@@ -18,6 +18,8 @@ class SpscHapticFrameQueueTest {
         assertFalse(queue.offerFrame(30L, 1f))
 
         assertEquals(10L, queue.peek()!!.timestampUs)
+        assertEquals(20L, queue.peek(1)!!.timestampUs)
+        assertNull(queue.peek(2))
         assertEquals(1_010L, queue.peek()!!.producerTimeUs)
         assertEquals(0.2f, queue.peek()!!.continuousAmplitude)
         queue.pop()
