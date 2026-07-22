@@ -125,16 +125,22 @@ def check(root: Path) -> list[str]:
         if ("const uint32_t product" not in vad_core or
                 "UINT32_MAX - product" not in vad_core):
             errors.append("third_party/libfvad/src/vad/vad_core.c: safety patch missing")
+    else:
+        errors.append("third_party/libfvad/src/vad/vad_core.c: missing")
     if vad_sp_path.exists():
         vad_sp = vad_sp_path.read_text(encoding="utf-8")
         if "for (j = i; j < 15; j++)" not in vad_sp:
             errors.append("third_party/libfvad/src/vad/vad_sp.c: bounds patch missing")
+    else:
+        errors.append("third_party/libfvad/src/vad/vad_sp.c: missing")
     if resample_path.exists():
         resample = resample_path.read_text(encoding="utf-8")
         if resample.count("(int32_t)in[i << 1] * 32768") != 2:
             errors.append(
                 "third_party/libfvad resampler: negative-shift safety patch missing"
             )
+    else:
+        errors.append("third_party/libfvad resampler: missing")
 
     aar_license_path = (
         root / "platform/android/src/main/resources/META-INF/LICENSE.libfvad"
