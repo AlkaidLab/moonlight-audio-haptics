@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(moonlight_haptics
-    VERSION 0.5.14
+    VERSION 0.6.0
     DESCRIPTION "Portable real-time audio-to-haptics core"
     LANGUAGES C CXX
 )
