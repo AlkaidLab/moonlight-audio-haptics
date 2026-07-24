@@ -6,6 +6,8 @@ while the public ABI has its own explicit version reported by
 
 ## Unreleased
 
+## 0.6.0 - 2026-07-24
+
 - Add a dialogue-aware GAME soft mask using the bundled WebRTC GMM VAD,
   stereo-centre evidence, and voice-band energy while preserving physical
   impacts through continuous evidence-based bypass.
