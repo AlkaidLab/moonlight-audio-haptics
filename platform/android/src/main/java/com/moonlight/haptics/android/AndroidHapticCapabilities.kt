@@ -26,6 +26,7 @@ data class AndroidHapticCapabilities(
         get() = level != AndroidHapticCapabilityLevel.NONE
 
     companion object {
+        @JvmSynthetic
         internal fun vibrator(context: Context): Vibrator? {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
@@ -38,7 +39,11 @@ data class AndroidHapticCapabilities(
         }
 
         fun detect(context: Context): AndroidHapticCapabilities {
-            val vibrator = vibrator(context)
+            return detect(vibrator(context))
+        }
+
+        @JvmSynthetic
+        internal fun detect(vibrator: Vibrator?): AndroidHapticCapabilities {
             if (vibrator == null || !vibrator.hasVibrator()) {
                 return AndroidHapticCapabilities(
                     AndroidHapticCapabilityLevel.NONE,

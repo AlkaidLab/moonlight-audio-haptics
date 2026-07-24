@@ -58,6 +58,31 @@ moonlight::haptics::core::FeatureFrame OrchestralFrame() {
     return frame;
 }
 
+moonlight::haptics::core::FeatureFrame DialogueFrame() {
+    moonlight::haptics::core::FeatureFrame frame;
+    frame.lowBandRatio = 0.05F;
+    frame.lowNovelty = 0.002F;
+    frame.midNovelty = 0.030F;
+    frame.highNovelty = 0.040F;
+    frame.percussiveNovelty = 0.015F;
+    frame.percussiveSalience = 0.55F;
+    frame.harmonicSalience = 0.45F;
+    frame.percussiveLowBandRatio = 0.03F;
+    frame.tactilePeak = 0.012F;
+    frame.voiceBandRatio = 0.85F;
+    frame.centerDominance = 0.95F;
+    return frame;
+}
+
+moonlight::haptics::core::FeatureFrame DialogueBedFrame() {
+    auto frame = DialogueFrame();
+    frame.lowBandRatio = 0.30F;
+    frame.percussiveSalience = 0.42F;
+    frame.harmonicSalience = 0.58F;
+    frame.percussiveLowBandRatio = 0.02F;
+    return frame;
+}
+
 moonlight::haptics::core::OnsetResult Onset(float sharpness) {
     moonlight::haptics::core::OnsetResult onset;
     onset.detected = true;
@@ -177,6 +202,117 @@ void AssertFatigueNeverReducesTransient() {
            fatiguedImpact.transientAmplitude);
 }
 
+void AssertDialogueSoftMaskRejectsAmbiguousMouthOnset() {
+    const auto onset = Onset(0.80F);
+    auto unmaskedFrame = DialogueFrame();
+    moonlight::haptics::core::GameSceneAuthor unmaskedAuthor;
+    const auto unmasked = unmaskedAuthor.Process(
+        0.0F, 0.12F, 0.70F, true, unmaskedFrame, onset);
+    assert(unmasked.hasTransient);
+
+    auto dialogueFrame = DialogueFrame();
+    dialogueFrame.speechProbability = 0.95F;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+    const auto filtered = dialogueAuthor.Process(
+        0.0F, 0.12F, 0.70F, true, dialogueFrame, onset);
+    assert(!filtered.hasTransient);
+    assert(filtered.transientAmplitude == 0.0F);
+}
+
+void AssertDialogueSoftMaskDucksAcceptedTransient() {
+    const auto onset = Onset(0.92F);
+    auto baselineFrame = SkillAttackFrame();
+    moonlight::haptics::core::GameSceneAuthor baselineAuthor;
+    const auto baseline = baselineAuthor.Process(
+        0.0F, 0.22F, 0.70F, true, baselineFrame, onset);
+    assert(baseline.hasTransient);
+
+    auto dialogueFrame = SkillAttackFrame();
+    dialogueFrame.speechProbability = 0.90F;
+    dialogueFrame.centerDominance = 0.95F;
+    dialogueFrame.voiceBandRatio = 0.85F;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+    const auto ducked = dialogueAuthor.Process(
+        0.0F, 0.22F, 0.70F, true, dialogueFrame, onset);
+
+    assert(ducked.hasTransient);
+    assert(ducked.transientAmplitude > 0.0F);
+    assert(ducked.transientAmplitude < baseline.transientAmplitude);
+}
+
+void AssertPhysicalImpactBypassesDialogueMask() {
+    auto impactFrame = PhysicalImpactFrame();
+    moonlight::haptics::core::GameSceneAuthor baselineAuthor;
+    const auto baseline = baselineAuthor.Process(
+        0.0F, 0.92F, 0.75F, true, impactFrame, Onset(0.12F));
+
+    impactFrame.speechProbability = 0.98F;
+    impactFrame.centerDominance = 0.98F;
+    impactFrame.voiceBandRatio = 0.90F;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+    const auto overDialogue = dialogueAuthor.Process(
+        0.0F, 0.92F, 0.75F, true, impactFrame, Onset(0.12F));
+
+    assert(overDialogue.hasTransient);
+    assert(overDialogue.transientAmplitude == baseline.transientAmplitude);
+    assert(overDialogue.transientDurationMs == baseline.transientDurationMs);
+}
+
+void AssertDialogueCannotStartAmbiguousContinuousBed() {
+    const moonlight::haptics::core::OnsetResult noOnset;
+    auto unmaskedFrame = DialogueBedFrame();
+    moonlight::haptics::core::GameSceneAuthor unmaskedAuthor;
+    float unmaskedAmplitude = 0.0F;
+    for (uint32_t hop = 0U; hop < 20U; ++hop) {
+        unmaskedAmplitude = unmaskedAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, unmaskedFrame, noOnset)
+                                .continuousAmplitude;
+    }
+    assert(unmaskedAmplitude > 0.0F);
+
+    auto dialogueFrame = DialogueBedFrame();
+    dialogueFrame.speechProbability = 0.98F;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+    for (uint32_t hop = 0U; hop < 100U; ++hop) {
+        const auto filtered = dialogueAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, dialogueFrame, noOnset);
+        assert(filtered.continuousAmplitude == 0.0F);
+    }
+}
+
+void AssertDialogueDucksActiveContinuousBed() {
+    const moonlight::haptics::core::OnsetResult noOnset;
+    const auto baselineFrame = DialogueBedFrame();
+    moonlight::haptics::core::GameSceneAuthor baselineAuthor;
+    moonlight::haptics::core::GameSceneAuthor dialogueAuthor;
+
+    float baselineAmplitude = 0.0F;
+    float dialogueAmplitude = 0.0F;
+    for (uint32_t hop = 0U; hop < 20U; ++hop) {
+        baselineAmplitude = baselineAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+        dialogueAmplitude = dialogueAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+    }
+    assert(baselineAmplitude > 0.0F);
+    assert(dialogueAmplitude == baselineAmplitude);
+
+    auto dialogueFrame = DialogueBedFrame();
+    dialogueFrame.speechProbability = 0.98F;
+    for (uint32_t hop = 0U; hop < 20U; ++hop) {
+        baselineAmplitude = baselineAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, baselineFrame, noOnset)
+                                .continuousAmplitude;
+        dialogueAmplitude = dialogueAuthor.Process(
+            0.60F, 0.52F, 0.0F, false, dialogueFrame, noOnset)
+                                .continuousAmplitude;
+    }
+    assert(dialogueAmplitude > 0.0F);
+    assert(dialogueAmplitude < baselineAmplitude);
+}
+
 } // namespace
 
 int main() {
@@ -186,5 +322,10 @@ int main() {
     AssertImpactAndSkillAttackRemainDistinct();
     AssertStableBgmBeatIsSuppressedButImpactBypassesIt();
     AssertFatigueNeverReducesTransient();
+    AssertDialogueSoftMaskRejectsAmbiguousMouthOnset();
+    AssertDialogueSoftMaskDucksAcceptedTransient();
+    AssertPhysicalImpactBypassesDialogueMask();
+    AssertDialogueCannotStartAmbiguousContinuousBed();
+    AssertDialogueDucksActiveContinuousBed();
     return 0;
 }

@@ -33,6 +33,23 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
     const float harmonic = Clamp01(features.harmonicSalience);
     const float percussiveLowRatio = Clamp01(
         features.percussiveLowBandRatio);
+    const float speech = Clamp01(features.speechProbability);
+    const float center = Clamp01(features.centerDominance);
+    const float voiceBandEvidence = Clamp01(
+        (features.voiceBandRatio -
+         parameters::kGameDialogueVoiceBandFloor) /
+        parameters::kGameDialogueVoiceBandRange);
+    const float dialogueScore = speech *
+        (parameters::kGameDialogueCenterMinimumScale +
+         (1.0F - parameters::kGameDialogueCenterMinimumScale) * center) *
+        (parameters::kGameDialogueVoiceBandMinimumScale +
+         (1.0F - parameters::kGameDialogueVoiceBandMinimumScale) *
+             voiceBandEvidence);
+    const float continuousPhysicalEvidence = Clamp01(
+        0.45F * support + 0.30F * lowRatio +
+        0.25F * percussiveLowRatio);
+    const float continuousDialogueMask = dialogueScore *
+        (1.0F - continuousPhysicalEvidence);
 
     // Freeze the input floor while low-frequency physical evidence is present.
     // Otherwise a slowly rising rumble could adapt itself away before the
@@ -54,7 +71,9 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
                            percussive >=
                                parameters::kGameContinuousStartPercussive &&
                            harmonic <=
-                               parameters::kGameContinuousStartHarmonicMaximum;
+                               parameters::kGameContinuousStartHarmonicMaximum &&
+                           continuousDialogueMask <=
+                               parameters::kGameDialogueContinuousStartMaximum;
     if (qualifies) {
         if (qualifyingHops_ < std::numeric_limits<uint32_t>::max()) {
             ++qualifyingHops_;
@@ -102,6 +121,9 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
                      supportScale) *
                 (0.55F + 0.45F * percussiveScale),
             parameters::kGameContinuousMaximumAmplitude);
+        target *= 1.0F -
+            parameters::kGameDialogueContinuousMaximumDuck *
+                continuousDialogueMask;
     }
     const float smoothing = target > continuousEnvelope_
         ? parameters::kGameContinuousAttack
@@ -160,6 +182,13 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
             impactScore >= parameters::kGameStrongImpactFloor &&
             (tactileImpulse >= 0.55F || support >= 0.82F) &&
             percussive >= 0.30F;
+        const float physicalOverride = strongPhysicalImpact
+            ? 1.0F
+            : Clamp01(std::max(
+                  std::max(impactScore, tactileImpulse),
+                  0.80F * percussiveScore + 0.20F * clickScore));
+        const float transientDialogueMask = dialogueScore *
+            (1.0F - physicalOverride);
         const float harmonicPenalty = 0.45F * Clamp01(
             (harmonic - percussive + 0.10F) / 0.55F);
         const float activityPenalty =
@@ -176,7 +205,9 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
             0.38F * percussiveScore + 0.22F * noveltyScore +
             0.18F * intent.confidence + 0.12F * tactileImpulse +
             0.10F * std::max(impactScore, clickScore) -
-            harmonicPenalty - activityPenalty - stableBeatPenalty;
+            harmonicPenalty - activityPenalty - stableBeatPenalty -
+            parameters::kGameDialogueTransientMaximumPenalty *
+                transientDialogueMask;
 
         // Count candidates, not only accepted effects. This makes a dense BGM
         // percussion bed self-limiting while ordinary 1-2 Hz combat actions
@@ -196,8 +227,12 @@ GameSceneIntent GameSceneAuthor::Process(float continuousInput,
             const float beatScale = onsetOnStableBeat && !strongPhysicalImpact
                 ? 0.82F + 0.18F * (1.0F - Clamp01(rhythmConfidence))
                 : 1.0F;
+            const float dialogueScale = 1.0F -
+                parameters::kGameDialogueTransientMaximumDuck *
+                    transientDialogueMask;
             intent.transientAmplitude = Clamp01(
-                intent.transientAmplitude * transientGain * beatScale);
+                intent.transientAmplitude * transientGain * beatScale *
+                    dialogueScale);
             intent.transientDurationMs =
                 parameters::kGameMinimumTransientDurationMs +
                 parameters::kGameImpactDurationRangeMs * impactScore +

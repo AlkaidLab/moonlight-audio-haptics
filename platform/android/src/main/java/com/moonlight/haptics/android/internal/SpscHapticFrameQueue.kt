@@ -91,10 +91,12 @@ internal class SpscHapticFrameQueue(capacity: Int) {
         return true
     }
 
-    fun peek(): MutableHapticFrame? {
+    fun peek(offset: Int = 0): MutableHapticFrame? {
+        require(offset >= 0)
         val read = readIndex.get()
-        if (read >= writeIndex.get()) return null
-        return slots[(read.toInt() and mask)]
+        val target = read + offset
+        if (target >= writeIndex.get()) return null
+        return slots[(target.toInt() and mask)]
     }
 
     fun pop() {

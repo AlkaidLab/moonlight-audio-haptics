@@ -152,6 +152,7 @@ void FeatureExtractor::Analyze(FeatureFrame& output) noexcept {
     float percussiveMidFlux = 0.0F;
     float percussiveHighFlux = 0.0F;
     float lowEnergy = 0.0F;
+    float voiceBandEnergy = 0.0F;
     float totalEnergy = 0.0F;
     float percussiveLowEnergy = 0.0F;
     float percussiveEnergy = 0.0F;
@@ -222,6 +223,10 @@ void FeatureExtractor::Analyze(FeatureFrame& output) noexcept {
         const float frequency = static_cast<float>(bin) *
                                 static_cast<float>(sampleRate_) /
                                 static_cast<float>(fftSize_);
+        if (frequency >= params::kVoiceBandMinimumHz &&
+            frequency < params::kVoiceBandMaximumHz) {
+            voiceBandEnergy += binEnergy;
+        }
         if (frequency >= params::kLowBandMinimumHz &&
             frequency < params::kLowBandMaximumHz) {
             lowFlux += difference;
@@ -291,6 +296,9 @@ void FeatureExtractor::Analyze(FeatureFrame& output) noexcept {
     output.lowBandRatio = totalEnergy <= 1.0e-12F
         ? 0.0F
         : Clamp(lowEnergy / totalEnergy, 0.0F, 1.0F);
+    output.voiceBandRatio = totalEnergy <= 1.0e-12F
+        ? 0.0F
+        : Clamp(voiceBandEnergy / totalEnergy, 0.0F, 1.0F);
     const double stereoSum = hopLeftSquares_ + hopRightSquares_;
     output.stereoPan = stereoSum <= 1.0e-12
         ? 0.0F

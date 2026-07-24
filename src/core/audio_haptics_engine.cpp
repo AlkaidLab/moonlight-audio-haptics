@@ -9,6 +9,7 @@
 #include "core/game_scene_author.h"
 #include "core/music_scene_author.h"
 #include "core/rhythm_activation_extractor.h"
+#include "core/speech_presence_estimator.h"
 #include "dsp/aosp_haptic_envelope.h"
 
 #include <algorithm>
@@ -32,6 +33,7 @@ struct AhEngine {
                moonlight::haptics::core::parameters::kAnalysisHopsPerSecond / 2U) /
               moonlight::haptics::core::parameters::kAnalysisHopsPerSecond),
           features(sampleRateValue, channelCountValue),
+          speechPresence(sampleRateValue, channelCountValue),
           tactileEnvelope(sampleRateValue, channelCountValue, analysisHopFrames),
           onset(sampleRateValue, analysisHopFrames),
           rhythmActivation(sampleRateValue, analysisHopFrames),
@@ -51,6 +53,7 @@ struct AhEngine {
     float lastEmittedContinuous = 0.0F;
     uint32_t hopsSinceContinuousOutput = 0;
     moonlight::haptics::core::FeatureExtractor features;
+    moonlight::haptics::core::SpeechPresenceEstimator speechPresence;
     moonlight::haptics::dsp::AospHapticEnvelope tactileEnvelope;
     moonlight::haptics::core::CausalOnsetDetector onset;
     moonlight::haptics::core::RhythmActivationExtractor rhythmActivation;
@@ -223,6 +226,7 @@ AhStatus ah_process_i16(AhEngine* engine,
         moonlight::haptics::dsp::TactileEnvelopeFrame tactile;
         const size_t pcmOffset = static_cast<size_t>(sampleIndex) * engine->channelCount;
         const int16_t* sample = input->interleaved_pcm + pcmOffset;
+        engine->speechPresence.PushInterleavedSample(sample);
         const bool tactileReady = engine->tactileEnvelope.PushInterleavedSample(
             sample, tactile);
         if (!engine->features.PushInterleavedSample(sample, features)) {
@@ -232,6 +236,10 @@ AhStatus ah_process_i16(AhEngine* engine,
         features.tactileRms = tactile.rms;
         features.tactilePeak = tactile.peak;
         features.tactileMeanAbsolute = tactile.meanAbsolute;
+        features.speechProbability =
+            engine->speechPresence.SpeechProbability();
+        features.centerDominance =
+            engine->speechPresence.CenterDominance();
 
         const moonlight::haptics::core::OnsetResult onset =
             engine->onset.Process(features, sensitivity);
@@ -410,6 +418,7 @@ void ah_reset(AhEngine* engine) {
     engine->lastEmittedContinuous = 0.0F;
     engine->hopsSinceContinuousOutput = 0;
     engine->features.Reset();
+    engine->speechPresence.Reset();
     engine->tactileEnvelope.Reset();
     engine->onset.Reset();
     engine->rhythmActivation.Reset();

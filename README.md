@@ -26,6 +26,16 @@ models. Android actuator-class amplitude floors and durations are applied by
 Measured vendor compensation is isolated in explicit Renderer device profiles.
 Profiles are neutral for unknown devices and may be disabled with
 `HapticRenderConfig(enableDeviceProfiles = false)`.
+Renderer timing compensation follows the same rule: the neutral Android
+profile keeps the validated 10 ms request lead, and model-specific overrides
+require measured audio-to-motion evidence.
+Android 16 envelope limits and sampled frequency response, plus Android 14+
+resonant-frequency/Q-factor values, are captured as validated read-only
+capabilities. When both envelope limits and frequency response are valid, the
+Android renderer uses an exact supported frequency to shape the finite onset
+of a continuous effect, then joins the proven repeating amplitude bed without
+periodic envelope seams. Invalid or rejected vendor data keeps the legacy
+waveform unchanged.
 
 `GameSceneAuthor` uses a fixed-capacity causal approximation of
 median-filter HPSS plus SuperFlux-style frequency maximum filtering for a
@@ -35,6 +45,15 @@ low-frequency physical impacts remain distinct from short skill attacks.
 Continuous GAME intent requires persistent non-tonal low-frequency evidence,
 is capped at 0.24 in portable IR, and is fatigue-ducked without reducing
 transients. MUSIC feature and authoring paths are unchanged.
+
+Scene selection is explicit host policy. ABI v1 retains `AH_SCENE_AUTO` for
+compatibility, but the Core resolves it to GAME; it does not run a hidden scene
+classifier. Hosts implementing an automatic mode should select GAME or MUSIC
+from product context and update the engine configuration. Dialogue centre
+evidence is fully defined for mono and stereo input. For 3--8 channels the
+current ABI has no channel-layout mask, so the dialogue path uses a
+layout-agnostic downmix and neutral centre evidence rather than guessing which
+channel is centre. A future ABI may add an explicit channel layout.
 
 ## Build and test
 
@@ -92,10 +111,13 @@ human-readable release tag in a comment.
 
 ## License boundary
 
-This directory is Apache-2.0 and has no third-party runtime binary dependency.
-Its FFT and spectral detector are project-written implementations; its portable
-haptic-envelope filter chain is attributed to the Apache-2.0 AOSP
-HapticGenerator. See `ALGORITHM_PROVENANCE.md` and `THIRD_PARTY_NOTICES.md`. It
-must not contain or link aubio/GPL sources.
+This directory is Apache-2.0 and has no third-party runtime binary or model
+dependency. Its FFT and spectral detector are project-written implementations;
+its portable haptic-envelope filter chain is attributed to the Apache-2.0 AOSP
+HapticGenerator. The GAME dialogue side path bundles libfvad from a pinned
+commit under BSD-3-Clause plus its WebRTC patent grant; three reviewed safety
+corrections are recorded in `third_party/libfvad/PATCHES.md`. See
+`ALGORITHM_PROVENANCE.md` and
+`THIRD_PARTY_NOTICES.md`. It must not contain or link aubio/GPL sources.
 The GPL host application may link this SDK, while the SDK remains independently
 distributable under Apache-2.0.

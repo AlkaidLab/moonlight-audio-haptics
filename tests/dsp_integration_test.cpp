@@ -289,7 +289,7 @@ void AssertMusicAuthoringCrossesThePublicIrBoundary() {
     assert(sawLaterTransient);
 }
 
-void AssertGameAuthoringCrossesThePublicIrBoundary() {
+void AssertGameAuthoringCrossesThePublicIrBoundary(uint32_t requestedScene) {
     std::vector<int16_t> pcm = RenderLowRumbleNoise();
     const uint64_t rumbleEndUs =
         static_cast<uint64_t>(pcm.size() / 2U) * 1000000ULL / kSampleRate;
@@ -297,7 +297,7 @@ void AssertGameAuthoringCrossesThePublicIrBoundary() {
 
     AhConfig config{};
     assert(ah_config_init(&config, kSampleRate, 2U) == AH_STATUS_OK);
-    config.requested_scene = AH_SCENE_GAME;
+    config.requested_scene = requestedScene;
     AhEngine* engine = nullptr;
     assert(ah_create(&config, &engine) == AH_STATUS_OK);
 
@@ -397,7 +397,8 @@ int main() {
     AssertTactileBranchAcceptsCompressedBeat();
     AssertAospEnvelopeIsCausalAndSettles();
     AssertMusicAuthoringCrossesThePublicIrBoundary();
-    AssertGameAuthoringCrossesThePublicIrBoundary();
+    AssertGameAuthoringCrossesThePublicIrBoundary(AH_SCENE_GAME);
+    AssertGameAuthoringCrossesThePublicIrBoundary(AH_SCENE_AUTO);
     AssertGameRejectsSteadyHarmonicBed();
     return 0;
 }

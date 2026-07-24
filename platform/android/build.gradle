@@ -90,6 +90,11 @@ publishing {
                         url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
                         distribution = 'repo'
                     }
+                    license {
+                        name = 'BSD 3-Clause License (bundled libfvad source)'
+                        url = 'https://opensource.org/license/bsd-3-clause'
+                        distribution = 'repo'
+                    }
                 }
                 scm {
                     connection = 'scm:git:https://github.com/AlkaidLab/moonlight-audio-haptics.git'

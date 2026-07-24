@@ -11,6 +11,7 @@ class HapticDeviceProfileTest {
         val profile = HapticDeviceProfiles.resolve("oppo", "pkj110", enabled = true)
 
         assertEquals("oplus-pkj110-media-v4", profile.id)
+        assertEquals(10_000L, profile.actuatorLeadUs)
         assertEquals(0.60f, profile.musicContinuousGain, 0.0001f)
         assertEquals(220L, profile.musicContinuousMaximumHoldMs)
     }
@@ -21,9 +22,11 @@ class HapticDeviceProfileTest {
         val disabled = HapticDeviceProfiles.resolve("OPPO", "PKJ110", enabled = false)
 
         assertEquals("default", unknown.id)
+        assertEquals(10_000L, unknown.actuatorLeadUs)
         assertEquals(1f, unknown.musicContinuousGain, 0.0001f)
         assertEquals(null, unknown.musicContinuousMaximumHoldMs)
         assertEquals("default", disabled.id)
+        assertEquals(10_000L, disabled.actuatorLeadUs)
         assertEquals(1f, disabled.musicContinuousGain, 0.0001f)
         assertEquals(null, disabled.musicContinuousMaximumHoldMs)
     }

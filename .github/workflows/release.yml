@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '\r\n' < VERSION)"
+          VERSION="$(tr -d '\r\n' < VERSION.txt)"
           test "${GITHUB_REF_NAME}" = "v${VERSION}"
           python tools/check_version.py .
           python tools/check_licenses.py .
@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '\r\n' < VERSION)"
+          VERSION="$(tr -d '\r\n' < VERSION.txt)"
           mkdir -p dist
           cp platform/android/build/outputs/aar/moonlight-haptics-android-release.aar \
             "dist/moonlight-haptics-android-${VERSION}.aar"

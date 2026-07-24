@@ -164,4 +164,59 @@ class HapticTimingPolicyTest {
         assertEquals(293_000L, decision.delayUs)
         assertFalse(decision.dropTransient)
     }
+
+    @Test
+    fun coalescesOnlyDueStateUpdatesWithoutOrderingBarriers() {
+        val due = HapticTimingDecision(
+            delayUs = 0L,
+            dropTransient = false,
+            targetVibrateTimeUs = null
+        )
+        val future = due.copy(
+            delayUs = 20_000L,
+            targetVibrateTimeUs = 1_020_000L
+        )
+        val continuous = HapticFrame.FLAG_CONTINUOUS_CHANGED
+
+        assertTrue(
+            HapticTimingPolicy.shouldCoalesceContinuous(
+                continuous,
+                due,
+                continuous,
+                due
+            )
+        )
+        assertFalse(
+            HapticTimingPolicy.shouldCoalesceContinuous(
+                continuous,
+                due,
+                continuous,
+                future
+            )
+        )
+        assertFalse(
+            HapticTimingPolicy.shouldCoalesceContinuous(
+                continuous,
+                due,
+                continuous or HapticFrame.FLAG_TRANSIENT,
+                due
+            )
+        )
+        assertFalse(
+            HapticTimingPolicy.shouldCoalesceContinuous(
+                continuous,
+                due,
+                continuous or HapticFrame.FLAG_STOP,
+                due
+            )
+        )
+        assertFalse(
+            HapticTimingPolicy.shouldCoalesceContinuous(
+                continuous,
+                due,
+                continuous or HapticFrame.FLAG_SCENE_CHANGED,
+                due
+            )
+        )
+    }
 }

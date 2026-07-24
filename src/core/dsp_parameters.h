@@ -23,6 +23,8 @@ inline constexpr float kLowBandMinimumHz = 20.0F;
 inline constexpr float kLowBandMaximumHz = 150.0F;
 inline constexpr float kMidBandMaximumHz = 2000.0F;
 inline constexpr float kHighBandMaximumHz = 8000.0F;
+inline constexpr float kVoiceBandMinimumHz = 180.0F;
+inline constexpr float kVoiceBandMaximumHz = 4000.0F;
 inline constexpr float kLowNoveltyWeight = 0.45F;
 inline constexpr float kMidNoveltyWeight = 0.35F;
 inline constexpr float kHighNoveltyWeight = 0.20F;
@@ -154,6 +156,18 @@ inline constexpr float kGameClickConfidenceScale = 0.32F;
 inline constexpr float kGameStrongImpactFloor = 0.66F;
 inline constexpr uint32_t kGameTransientDuckHops = 14U;
 inline constexpr float kGameTransientMaximumDuck = 0.32F;
+
+// Dialogue-aware soft mask. WebRTC VAD supplies speech activity while stereo
+// centre and voice-band evidence reduce music false positives. Physical game
+// events continuously bypass the mask instead of relying on a hard gate.
+inline constexpr float kGameDialogueCenterMinimumScale = 0.55F;
+inline constexpr float kGameDialogueVoiceBandMinimumScale = 0.65F;
+inline constexpr float kGameDialogueVoiceBandFloor = 0.20F;
+inline constexpr float kGameDialogueVoiceBandRange = 0.60F;
+inline constexpr float kGameDialogueContinuousMaximumDuck = 0.90F;
+inline constexpr float kGameDialogueContinuousStartMaximum = 0.62F;
+inline constexpr float kGameDialogueTransientMaximumPenalty = 0.55F;
+inline constexpr float kGameDialogueTransientMaximumDuck = 0.80F;
 
 } // namespace moonlight::haptics::core::parameters
 

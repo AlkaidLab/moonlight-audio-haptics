@@ -4,6 +4,7 @@ package com.moonlight.haptics.android.internal
 
 internal data class HapticDeviceProfile(
     val id: String,
+    val actuatorLeadUs: Long,
     val musicContinuousGain: Float,
     val musicContinuousMaximumHoldMs: Long?
 )
@@ -28,11 +29,17 @@ internal object HapticDeviceProfiles {
 
     private val DEFAULT = HapticDeviceProfile(
         id = "default",
+        // Conservative request lead retained from the validated Android path.
+        // A device override requires measured audio-to-motion evidence.
+        actuatorLeadUs = 10_000L,
         musicContinuousGain = 1f,
         musicContinuousMaximumHoldMs = null
     )
     private val OPPO_PKJ110 = HapticDeviceProfile(
         id = "oplus-pkj110-media-v4",
+        // No independent latency delta was observed for this profile. Keep the
+        // neutral timing while applying only its measured amplitude behavior.
+        actuatorLeadUs = 10_000L,
         // OPlus vibrator history shows USAGE_MEDIA beds near 0.15/0.26 being
         // rendered near 0.31/0.50, compressing contrast against transients.
         musicContinuousGain = 0.60f,

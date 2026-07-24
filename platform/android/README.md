@@ -15,8 +15,11 @@ The AAR owns:
 - a monotonic producer timestamp on each queued Android IR frame;
 - the public Prefab/C header `moonlight_haptics/android_adapter.h`;
 - vibrator capability detection and device-level fallback;
+- Android 16 envelope-limit and frequency-response snapshots plus Android 14+
+  resonant-frequency/Q-factor diagnostics;
 - a fixed-capacity SPSC input queue and private renderer thread;
-- Android waveform, primitive, envelope, and one-shot mapping;
+- Android waveform, primitive, envelope, and one-shot mapping, including an
+  Android 16 frequency-shaped onset before the stable continuous amplitude bed;
 - Android 12+ audio-coupled `HapticGenerator` session binding;
 - device-level rate limiting, hysteresis, stop, and release.
 - optional AudioTrack presentation-clock alignment, stale-transient suppression,
@@ -26,6 +29,8 @@ The host application owns PCM acquisition, scene/product policy, user strength,
 session orchestration, and phone/gamepad routing. It registers the AAR's opaque
 native session handle with its PCM bridge; it does not own `AhEngine` or copy an
 SDK IR struct. The first AAR does not promise a generic gamepad transport.
+`HapticFrame.SCENE_AUTO` is retained only as an ABI v1 alias for GAME; an Android
+host's automatic scene policy should select an explicit scene.
 
 ## Build
 
@@ -56,9 +61,12 @@ calls into the Android vibrator service remain off the audio callback.
 PCM hosts should reuse an `AudioTimestamp` and call
 `AndroidHapticRenderer.updateAudioPresentationClock()` after successful
 `AudioTrack.write()` operations. The renderer maps each IR stream timestamp to
-the estimated acoustic presentation time, subtracts `actuatorLeadMs`, and
+the estimated acoustic presentation time, subtracts the SDK device profile's
+actuator request lead, and
 schedules the vibration request in the `AudioTimestamp.nanoTime` /
 `System.nanoTime()` monotonic time domain.
+The neutral profile uses the validated 10 ms lead. Overrides remain internal
+and require measured audio-to-motion evidence; this is not a host tuning knob.
 When no valid timestamp exists, or the audio/IR stream origins are implausibly
 far apart, it falls back to the monotonic native producer time.
 
@@ -66,7 +74,10 @@ Transient IR that misses `transientStaleDeadlineMs` is discarded instead of
 being rendered late. If several transient frames are queued, the latest wins;
 latest-wins applies only to the immediate fallback path, because two frames
 with valid future audio deadlines may both be real beats. `STOP` is always
-delivered with priority. Continuous state is retained. The default 500 ms
+delivered with priority. Consecutive state-only continuous updates that are
+already due, or use the immediate fallback path, are coalesced to the newest
+value. Future clock-aligned states, transients, scene changes, and stops remain
+ordering barriers. The default 500 ms
 schedule window covers high-latency Bluetooth A2DP presentation clocks while
 still rejecting implausible stream-origin mismatches. Use
 `takeLatencySnapshot()` for the rolling render-dispatch and audio-target skew
@@ -74,6 +85,17 @@ P50/P95/P99 counters plus stale/superseded drop counts.
 
 Call `clearAudioPresentationClock()` whenever the AudioTrack is paused,
 flushed, released, or rebuilt.
+
+`AndroidHapticRenderer.actuatorCapabilities` exposes the validated snapshot
+used by capability-driven rendering. Diagnostics that do not construct a
+Renderer may call `AndroidHapticActuatorCapabilities.detect(context)`. On
+Android 16, a valid envelope limit and sampled frequency response allow the
+Renderer to frequency-shape the finite onset of a continuous effect. The
+steady bed retains the proven amplitude waveform so an envelope repeat cannot
+introduce a periodic zero-amplitude seam. Missing, malformed, or rejected
+vendor data falls back to the same amplitude waveform used on older devices.
+`lastContinuousRenderPath` reports the most recently submitted continuous path
+without enabling logs, callbacks, counters, or runtime tuning.
 
 ## Renderer submission
 

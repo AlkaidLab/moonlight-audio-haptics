@@ -73,6 +73,18 @@ internal object HapticTimingPolicy {
         return transient && !stop && (timing.dropTransient || supersededFallback)
     }
 
+    fun shouldCoalesceContinuous(
+        headFlags: Int,
+        headTiming: HapticTimingDecision,
+        nextFlags: Int,
+        nextTiming: HapticTimingDecision
+    ): Boolean {
+        return headFlags.isCoalescibleContinuousState() &&
+            nextFlags.isCoalescibleContinuousState() &&
+            headTiming.delayUs == 0L &&
+            nextTiming.delayUs == 0L
+    }
+
     private fun presentationTargetUs(
         streamTimestampUs: Long,
         clockFramePosition: Long,
@@ -88,5 +100,15 @@ internal object HapticTimingPolicy {
         val presentationTimeUs = clockSystemTimeUs +
             (streamTimestampUs - clockStreamTimeUs)
         return presentationTimeUs - actuatorLeadUs
+    }
+
+    private fun Int.isCoalescibleContinuousState(): Boolean {
+        val continuous = this and HapticFrame.FLAG_CONTINUOUS_CHANGED != 0
+        val orderingBarrier = this and (
+            HapticFrame.FLAG_TRANSIENT or
+                HapticFrame.FLAG_STOP or
+                HapticFrame.FLAG_SCENE_CHANGED
+            ) != 0
+        return continuous && !orderingBarrier
     }
 }

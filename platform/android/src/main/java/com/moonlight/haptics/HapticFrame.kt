@@ -46,6 +46,7 @@ data class HapticFrame(
 
         const val SCENE_GAME = 0
         const val SCENE_MUSIC = 1
+        /** ABI v1 compatibility alias; the native engine resolves AUTO to GAME. */
         const val SCENE_AUTO = 2
         const val SCENE_UNKNOWN = 3
     }
