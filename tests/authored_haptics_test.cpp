@@ -90,6 +90,8 @@ int main() {
     assert(output[0].lanes[0].rms_amplitude > 0.2F);
     assert(output[0].lanes[1].rms_amplitude == 0.0F);
     assert(output[0].lanes[0].low_band_ratio > 0.2F);
+    assert(output[0].lanes[0].zero_crossing_rate_hz >= 180.0F);
+    assert(output[0].lanes[0].zero_crossing_rate_hz < 300.0F);
     const float oneShotRms = output[0].lanes[0].rms_amplitude;
 
     // Chunk boundaries do not change a complete hop's output.
@@ -104,6 +106,7 @@ int main() {
            AH_STATUS_OUTPUT_AVAILABLE);
     assert(count == 1U);
     assert(std::abs(output[0].lanes[0].rms_amplitude - oneShotRms) < 1.0e-6F);
+    assert(output[0].timestamp_us == 2005000U);
 
     // A sequence gap resets history and marks the next frame for a clean UX.
     AhAuthoredProcessInput gap = Input(

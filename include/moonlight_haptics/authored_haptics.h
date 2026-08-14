@@ -62,7 +62,7 @@ typedef struct AhAuthoredLaneFrame {
     float peak_amplitude;         /* Linear full scale, 0.0 .. 1.0. */
     float transient_strength;     /* Relative attack, 0.0 .. 1.0. */
     float low_band_ratio;         /* Energy below roughly 200 Hz, 0.0 .. 1.0. */
-    /* Zero crossings per second divided by two; a texture hint, not pitch. */
+    /* Sign transitions per second; a texture hint, not a pitch estimate. */
     float zero_crossing_rate_hz;
     uint32_t reserved[3];
 } AhAuthoredLaneFrame;

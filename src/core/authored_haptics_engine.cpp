@@ -3,6 +3,7 @@
 #include "moonlight_haptics/authored_haptics.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -65,7 +66,10 @@ struct AhAuthoredEngine {
     float lowPassAlpha;
     uint32_t accumulatedFrames = 0;
     uint32_t expectedSequence = 0;
+    uint64_t timelineAnchorUs = 0;
+    uint64_t timelineFrames = 0;
     bool hasExpectedSequence = false;
+    bool hasTimeline = false;
     bool markDiscontinuity = true;
     LaneAccumulator lanes[2];
     double crossSum = 0.0;
@@ -87,6 +91,9 @@ void ResetWindow(AhAuthoredEngine& engine) noexcept {
 void ResetStream(AhAuthoredEngine& engine) noexcept {
     ResetWindow(engine);
     engine.hasExpectedSequence = false;
+    engine.hasTimeline = false;
+    engine.timelineAnchorUs = 0;
+    engine.timelineFrames = 0;
     engine.markDiscontinuity = true;
     for (LaneAccumulator& lane : engine.lanes) {
         lane.lowPass = 0.0F;
@@ -131,7 +138,7 @@ void EmitFrame(AhAuthoredEngine& engine,
         lane.zero_crossing_rate_hz =
             static_cast<float>(source.zeroCrossings) *
             static_cast<float>(engine.sampleRate) /
-            (2.0F * static_cast<float>(engine.accumulatedFrames));
+            static_cast<float>(engine.accumulatedFrames);
         source.previousRms = rms;
         source.previousPeak = source.peak;
         silent = silent && source.peak <= kSilenceFloor;
@@ -144,6 +151,24 @@ void EmitFrame(AhAuthoredEngine& engine,
               static_cast<float>(engine.crossSum / denominator)))
         : 0.0F;
     if (silent) output.flags |= AH_AUTHORED_FRAME_SILENT;
+}
+
+bool TimestampForFramePosition(uint64_t anchorUs,
+                               uint64_t framePosition,
+                               uint32_t sampleRate,
+                               uint64_t& timestampUs) noexcept {
+    const uint64_t wholeSeconds = framePosition / sampleRate;
+    const uint64_t remainingFrames = framePosition % sampleRate;
+    if (wholeSeconds > std::numeric_limits<uint64_t>::max() / 1000000ULL) {
+        return false;
+    }
+    const uint64_t deltaUs = wholeSeconds * 1000000ULL +
+        remainingFrames * 1000000ULL / sampleRate;
+    if (anchorUs > std::numeric_limits<uint64_t>::max() - deltaUs) {
+        return false;
+    }
+    timestampUs = anchorUs + deltaUs;
+    return true;
 }
 
 } // namespace
@@ -219,19 +244,23 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
         (input->flags & ~kValidInputFlags) != 0U) {
         return AH_STATUS_INVALID_ARGUMENT;
     }
-    const uint64_t durationUs =
-        static_cast<uint64_t>(input->frame_count) * 1000000ULL /
-        engine->sampleRate;
-    if (input->first_sample_time_us >
-        std::numeric_limits<uint64_t>::max() - durationUs) {
-        return AH_STATUS_BAD_STATE;
-    }
-
     const bool explicitReset =
         (input->flags & (AH_AUTHORED_INPUT_STREAM_START |
                          AH_AUTHORED_INPUT_DISCONTINUITY)) != 0U;
     const bool sequenceGap = engine->hasExpectedSequence &&
                              input->sequence_number != engine->expectedSequence;
+    const bool startsTimeline = explicitReset || sequenceGap || !engine->hasTimeline;
+    const uint64_t timelineFramesBefore = startsTimeline ? 0U : engine->timelineFrames;
+    if (timelineFramesBefore > std::numeric_limits<uint64_t>::max() - input->frame_count) {
+        return AH_STATUS_BAD_STATE;
+    }
+    const uint64_t timelineFramesAfter = timelineFramesBefore + input->frame_count;
+    uint64_t inputEndTimestamp = 0;
+    if (!TimestampForFramePosition(
+            startsTimeline ? input->first_sample_time_us : engine->timelineAnchorUs,
+            timelineFramesAfter, engine->sampleRate, inputEndTimestamp)) {
+        return AH_STATUS_BAD_STATE;
+    }
     const uint32_t bufferedBefore = (explicitReset || sequenceGap)
         ? 0U
         : engine->accumulatedFrames;
@@ -246,6 +275,11 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
     if (required > 0U && out_frames == nullptr) return AH_STATUS_INVALID_ARGUMENT;
 
     if (explicitReset || sequenceGap) ResetStream(*engine);
+    if (!engine->hasTimeline) {
+        engine->timelineAnchorUs = input->first_sample_time_us;
+        engine->timelineFrames = 0;
+        engine->hasTimeline = true;
+    }
     engine->expectedSequence = input->sequence_number + 1U;
     engine->hasExpectedSequence = true;
 
@@ -270,11 +304,15 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
         }
         engine->crossSum += static_cast<double>(values[0]) * values[1];
         ++engine->accumulatedFrames;
+        ++engine->timelineFrames;
 
         if (engine->accumulatedFrames == engine->hopFrames) {
-            const uint64_t timestamp = input->first_sample_time_us +
-                (static_cast<uint64_t>(frameIndex) + 1U) * 1000000ULL /
-                    engine->sampleRate;
+            uint64_t timestamp = 0;
+            const bool validTimestamp = TimestampForFramePosition(
+                engine->timelineAnchorUs, engine->timelineFrames,
+                engine->sampleRate, timestamp);
+            (void)validTimestamp;
+            assert(validTimestamp);
             uint32_t flags = AH_AUTHORED_FRAME_NONE;
             if ((input->flags & AH_AUTHORED_INPUT_STREAM_END) != 0U &&
                 frameIndex + 1U == input->frame_count) {
@@ -289,9 +327,12 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
 
     if ((input->flags & AH_AUTHORED_INPUT_STREAM_END) != 0U) {
         if (engine->accumulatedFrames > 0U) {
-            const uint64_t timestamp = input->first_sample_time_us +
-                static_cast<uint64_t>(input->frame_count) * 1000000ULL /
-                    engine->sampleRate;
+            uint64_t timestamp = 0;
+            const bool validTimestamp = TimestampForFramePosition(
+                engine->timelineAnchorUs, engine->timelineFrames,
+                engine->sampleRate, timestamp);
+            (void)validTimestamp;
+            assert(validTimestamp);
             EmitFrame(*engine, out_frames[*out_count], timestamp,
                       input->sequence_number,
                       AH_AUTHORED_FRAME_PARTIAL |
@@ -299,8 +340,7 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
             ++(*out_count);
             ResetWindow(*engine);
         }
-        engine->hasExpectedSequence = false;
-        engine->markDiscontinuity = true;
+        ResetStream(*engine);
     }
 
     return *out_count == 0U ? AH_STATUS_OK : AH_STATUS_OUTPUT_AVAILABLE;
