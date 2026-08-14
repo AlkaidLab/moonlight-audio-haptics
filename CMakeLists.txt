@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(moonlight_haptics
-    VERSION 0.6.0
+    VERSION 0.7.0
     DESCRIPTION "Portable real-time audio-to-haptics core"
     LANGUAGES C CXX
 )
@@ -54,6 +54,7 @@ set_target_properties(moonlight_haptics_fvad_objects PROPERTIES
 
 add_library(moonlight_haptics_core STATIC
     src/core/audio_haptics_engine.cpp
+    src/core/authored_haptics_engine.cpp
     src/core/causal_onset_detector.cpp
     src/core/causal_rhythm_clock.cpp
     src/core/feature_extractor.cpp
@@ -162,6 +163,15 @@ if(MOONLIGHT_HAPTICS_BUILD_TESTS)
     target_link_libraries(moonlight_haptics_abi_test PRIVATE moonlight_haptics_core)
     moonlight_haptics_enable_test_assertions(moonlight_haptics_abi_test)
     add_test(NAME moonlight_haptics_abi COMMAND moonlight_haptics_abi_test)
+
+    add_executable(moonlight_haptics_authored_test
+        tests/authored_haptics_test.cpp)
+    target_link_libraries(moonlight_haptics_authored_test
+        PRIVATE moonlight_haptics_core)
+    moonlight_haptics_enable_test_assertions(
+        moonlight_haptics_authored_test)
+    add_test(NAME moonlight_haptics_authored
+        COMMAND moonlight_haptics_authored_test)
 
     add_executable(moonlight_haptics_dsp_integration_test
         tests/dsp_integration_test.cpp)

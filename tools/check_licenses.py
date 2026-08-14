@@ -46,7 +46,9 @@ SKIP_DIRS = {
 
 def iter_source_files(root: Path):
     for path in root.rglob("*"):
-        if not path.is_file() or any(part in SKIP_DIRS for part in path.parts):
+        if not path.is_file() or any(
+                part in SKIP_DIRS or part.startswith("build-")
+                for part in path.parts):
             continue
         if path.suffix.lower() in SOURCE_SUFFIXES or path.name == "CMakeLists.txt":
             yield path

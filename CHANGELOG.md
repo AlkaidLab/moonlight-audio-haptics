@@ -6,6 +6,15 @@ while the public ABI has its own explicit version reported by
 
 ## Unreleased
 
+- Add ABI v2 authored-stereo analysis for Sunshine fallback transports while
+  preserving the existing ABI v1 scene-authoring API.
+- Preserve left/right source lanes in causal 5 ms IR frames with no processing
+  allocation, locking, device calibration, or actuator-specific curves.
+- Reset cleanly on explicit discontinuity or sequence gaps and flush a marked
+  partial tail at end-of-stream.
+- Add ABI-size, lane-isolation, chunk-invariance, discontinuity, timestamp, and
+  end-of-stream regression coverage.
+
 ## 0.6.0 - 2026-07-24
 
 - Add a dialogue-aware GAME soft mask using the bundled WebRTC GMM VAD,

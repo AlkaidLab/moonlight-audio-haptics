@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "moonlight_haptics/audio_haptics.h"
+#include "moonlight_haptics/authored_haptics.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,11 @@ static_assert(AH_FRAME_MUSIC_RESTART == (1u << 5),
               "music restart flag changed");
 static_assert(sizeof(AhConfig) == 60, "AhConfig ABI v1 changed");
 static_assert(sizeof(AhHapticFrame) == 80, "AhHapticFrame ABI v1 changed");
+static_assert(sizeof(AhAuthoredConfig) == 48, "AhAuthoredConfig ABI v2 changed");
+static_assert(sizeof(AhAuthoredProcessInput) == 40,
+              "AhAuthoredProcessInput ABI v2 changed");
+static_assert(sizeof(AhAuthoredHapticFrame) == 104,
+              "AhAuthoredHapticFrame ABI v2 changed");
 static_assert(offsetof(AhHapticFrame, timestamp_us) == 8, "timestamp offset changed");
 static_assert(offsetof(AhHapticFrame, continuous_amplitude) == 16,
               "continuous amplitude offset changed");
