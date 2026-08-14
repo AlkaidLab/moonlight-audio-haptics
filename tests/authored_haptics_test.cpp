@@ -75,10 +75,12 @@ int main() {
            AH_STATUS_INVALID_ARGUMENT);
     AhAuthoredProcessInput invalidFlags = input;
     invalidFlags.flags |= 1U << 31U;
+    count = 7U;
     assert(ah_authored_process_i16(
                engine, &invalidFlags, output, 2U, &count) ==
            AH_STATUS_INVALID_ARGUMENT);
     assert(count == 0U);
+    count = 7U;
     assert(ah_authored_process_i16(engine, &input, output, 0U, &count) ==
            AH_STATUS_BUFFER_TOO_SMALL);
     assert(count == 0U);
