@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "moonlight_haptics/audio_haptics.h"
+#include "moonlight_haptics/authored_haptics.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
 int main(void) {
-    assert(ah_get_abi_version() == 1u);
-    assert(strcmp(ah_get_version_string(), "0.6.0") == 0);
+    assert(ah_get_abi_version() == 2u);
+    assert(strcmp(ah_get_version_string(), "0.7.0") == 0);
     assert(strcmp(ah_get_parameter_set_version(),
                   "action-rpg-p4g-v6-dialogue") == 0);
     assert(strcmp(ah_status_string(AH_STATUS_OK), "ok") == 0);
+
+    AhAuthoredConfig authored_config;
+    assert(ah_authored_config_init(&authored_config, 48000u) == AH_STATUS_OK);
+    AhAuthoredEngine* authored_engine = NULL;
+    assert(ah_authored_create(&authored_config, &authored_engine) == AH_STATUS_OK);
+    ah_authored_destroy(authored_engine);
 
     AhConfig config;
     assert(ah_config_init(&config, 48000u, 2u) == AH_STATUS_OK);

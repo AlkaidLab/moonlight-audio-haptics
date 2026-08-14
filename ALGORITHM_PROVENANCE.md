@@ -2,7 +2,7 @@
 
 # Algorithm provenance
 
-Moonlight Audio Haptics 0.5 contains four provenance classes:
+Moonlight Audio Haptics 0.7 contains five provenance classes:
 
 1. the FFT, spectral/PCEN feature path, robust onset picker, IR mapping, and
    platform-neutral engine are project-written Apache-2.0 code;
@@ -11,10 +11,24 @@ Moonlight Audio Haptics 0.5 contains four provenance classes:
 3. `src/core/causal_rhythm_clock.*` is project-written Apache-2.0 code informed
    by the published Real-Time Predominant Local Pulse method;
 4. the GAME percussive/tonal features are project-written Apache-2.0 code
-   informed by published median-filter HPSS and SuperFlux methods.
+   informed by published median-filter HPSS and SuperFlux methods;
+5. the ABI v2 authored-stereo analyzer is project-written Apache-2.0 code
+   using a first-order causal low-pass energy split and standard time-domain
+   amplitude, attack, zero-crossing, and cross-correlation measurements.
 
 The SDK does not compile or link aubio. It has no third-party runtime binary or
 model dependency.
+
+## Authored-stereo fallback
+
+`src/core/authored_haptics_engine.cpp` is a project-written streaming feature
+extractor. Each source lane maintains its own state; no downmix, antiphase
+fusion, pitch tracker, learned model, or device response curve is used. The
+roughly 200 Hz split is a first-order exponential low-pass whose coefficient is
+derived from the configured sample rate. RMS, peak, positive attack, zero
+crossing rate, and normalized lane correlation use their standard definitions.
+These features form a lossy transport fallback and are not claimed to recreate
+the source PCM or estimate musical pitch.
 
 ## Public methods used
 

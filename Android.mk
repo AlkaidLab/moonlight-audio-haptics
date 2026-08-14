@@ -5,6 +5,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := moonlight_haptics_core
 LOCAL_SRC_FILES := src/core/audio_haptics_engine.cpp \
+                   src/core/authored_haptics_engine.cpp \
                    src/core/causal_onset_detector.cpp \
                    src/core/causal_rhythm_clock.cpp \
                    src/core/feature_extractor.cpp \

@@ -5,7 +5,8 @@
 Portable C++17 audio-to-haptics core shared by Android, HarmonyOS and future
 server-side hosts such as Sunshine.
 
-Version 0.5 keeps the stable ABI v1 and emits portable haptic IR from mono or
+Version 0.7 keeps the stable scene-authoring ABI v1 and adds an additive ABI v2
+Sunshine analysis path. The v1 engine emits portable haptic IR from mono or
 multichannel PCM. It combines channel-aware spectral energy fusion, PCEN-style
 adaptation, and robust onset picking with a portable Apache-2.0 adaptation of
 AOSP HapticGenerator's causal actuator-shaped waveform. The AOSP waveform is
@@ -55,6 +56,21 @@ current ABI has no channel-layout mask, so the dialogue path uses a
 layout-agnostic downmix and neutral centre evidence rather than guessing which
 channel is centre. A future ABI may add an explicit channel layout.
 
+The separate authored-stereo API in
+`include/moonlight_haptics/authored_haptics.h` is for Sunshine deployments
+where a client cannot receive original DualSense haptics PCM. It emits one
+device-independent lane per source channel every 5 ms: RMS and peak amplitude,
+attack strength, low-band energy ratio, and zero-crossing texture. The lanes
+are never downmixed. Sequence gaps and explicit discontinuities reset filter
+history and mark the first new frame so a client can ramp cleanly instead of
+replaying stale energy. End-of-stream flushes a marked partial frame.
+
+This authored IR is intentionally lossy and is not a replacement for raw PCM.
+Sunshine should negotiate raw PCM first, analyze once only for clients needing
+the fallback, and keep the analyzer outside the privileged capture sidecar.
+Moonlight remains responsible for device calibration, actuator mapping, and
+the final render curve.
+
 ## Build and test
 
 ```bash
@@ -91,7 +107,8 @@ human-readable release tag in a comment.
 
 ## ABI rules
 
-- Public types live in `include/moonlight_haptics/audio_haptics.h` and compile as C11.
+- Public types live in `include/moonlight_haptics/audio_haptics.h` and
+  `include/moonlight_haptics/authored_haptics.h` and compile as C11.
 - Every public struct starts with `struct_size`; callers zero-initialize structs.
 - `AhHapticFrame` is fixed at 80 bytes in ABI v1. Minor evolution consumes
   reserved fields; changing the array element size requires a new API/ABI.
@@ -108,6 +125,10 @@ human-readable release tag in a comment.
   32-bit atomics and may be updated from one control thread.
 - A larger PCM input may span multiple analysis hops, so the caller provides a
   fixed output array sized with `ah_get_max_output_frames()`.
+- The ABI v2 authored-stereo analyzer accepts exactly two ordered haptics channels.
+  It preserves filter history across arbitrary input chunks, automatically
+  resets on a sequence gap, and exposes a separate capacity query that includes
+  a buffered partial window.
 
 ## License boundary
 

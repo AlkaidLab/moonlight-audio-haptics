@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'com.moonlight.haptics'
-version = (findProperty('sdkVersion') ?: '0.6.0-SNAPSHOT').toString()
+version = (findProperty('sdkVersion') ?: '0.7.0-SNAPSHOT').toString()
 
 android {
     namespace 'com.moonlight.haptics.android'
