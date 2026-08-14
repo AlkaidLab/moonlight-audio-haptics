@@ -57,6 +57,8 @@ int main() {
                   "authored frame ABI changed");
 
     AhAuthoredConfig config{};
+    assert(ah_authored_config_init(&config, 7999U) == AH_STATUS_UNSUPPORTED);
+    assert(ah_authored_config_init(&config, 192001U) == AH_STATUS_UNSUPPORTED);
     assert(ah_authored_config_init(&config, 48000U) == AH_STATUS_OK);
     assert(config.channel_count == 2U);
     assert(config.analysis_hop_frames == 240U);
@@ -69,6 +71,17 @@ int main() {
         isolated.data(), 240U, 10U, AH_AUTHORED_INPUT_STREAM_START, 1000000U);
     AhAuthoredHapticFrame output[2]{};
     uint32_t count = 0U;
+    assert(ah_authored_process_i16(engine, &input, output, 2U, nullptr) ==
+           AH_STATUS_INVALID_ARGUMENT);
+    AhAuthoredProcessInput invalidFlags = input;
+    invalidFlags.flags |= 1U << 31U;
+    assert(ah_authored_process_i16(
+               engine, &invalidFlags, output, 2U, &count) ==
+           AH_STATUS_INVALID_ARGUMENT);
+    assert(count == 0U);
+    assert(ah_authored_process_i16(engine, &input, output, 0U, &count) ==
+           AH_STATUS_BUFFER_TOO_SMALL);
+    assert(count == 0U);
     assert(ah_authored_process_i16(engine, &input, output, 2U, &count) ==
            AH_STATUS_OUTPUT_AVAILABLE);
     assert(count == 1U);
@@ -111,6 +124,14 @@ int main() {
     assert(output[0].source_frame_count == 80U);
     assert((output[0].flags & AH_AUTHORED_FRAME_PARTIAL) != 0U);
     assert((output[0].flags & AH_AUTHORED_FRAME_STREAM_END) != 0U);
+
+    // STREAM_END establishes a new boundary even if the host omits START on
+    // the next stream, allowing the client to apply a clean fade-in.
+    AhAuthoredProcessInput afterEnd = Input(
+        isolated.data(), 240U, 25U, AH_AUTHORED_INPUT_NONE, 5000000U);
+    assert(ah_authored_process_i16(engine, &afterEnd, output, 1U, &count) ==
+           AH_STATUS_OUTPUT_AVAILABLE);
+    assert((output[0].flags & AH_AUTHORED_FRAME_DISCONTINUITY) != 0U);
 
     ah_authored_destroy(engine);
     return 0;

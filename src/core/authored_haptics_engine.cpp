@@ -8,6 +8,10 @@
 #include <limits>
 #include <new>
 
+static_assert(sizeof(AhAuthoredProcessInput) ==
+                  AH_AUTHORED_PROCESS_INPUT_V2_SIZE,
+              "authored input ABI prefix must cover the complete struct");
+
 namespace {
 
 constexpr uint32_t kMinimumSampleRate = 8000;
@@ -296,6 +300,7 @@ AhStatus ah_authored_process_i16(AhAuthoredEngine* engine,
             ResetWindow(*engine);
         }
         engine->hasExpectedSequence = false;
+        engine->markDiscontinuity = true;
     }
 
     return *out_count == 0U ? AH_STATUS_OK : AH_STATUS_OUTPUT_AVAILABLE;

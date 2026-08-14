@@ -23,8 +23,9 @@ static_assert(AH_FRAME_MUSIC_RESTART == (1u << 5),
 static_assert(sizeof(AhConfig) == 60, "AhConfig ABI v1 changed");
 static_assert(sizeof(AhHapticFrame) == 80, "AhHapticFrame ABI v1 changed");
 static_assert(sizeof(AhAuthoredConfig) == 48, "AhAuthoredConfig ABI v2 changed");
-static_assert(sizeof(AhAuthoredProcessInput) == 40,
-              "AhAuthoredProcessInput ABI v2 changed");
+static_assert(AH_AUTHORED_PROCESS_INPUT_V2_SIZE ==
+                  offsetof(AhAuthoredProcessInput, reserved) + sizeof(uint32_t),
+              "AhAuthoredProcessInput ABI v2 prefix changed");
 static_assert(sizeof(AhAuthoredHapticFrame) == 104,
               "AhAuthoredHapticFrame ABI v2 changed");
 static_assert(offsetof(AhHapticFrame, timestamp_us) == 8, "timestamp offset changed");

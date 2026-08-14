@@ -125,7 +125,7 @@ human-readable release tag in a comment.
   32-bit atomics and may be updated from one control thread.
 - A larger PCM input may span multiple analysis hops, so the caller provides a
   fixed output array sized with `ah_get_max_output_frames()`.
-- The ABI v2 authored analyzer accepts exactly two ordered haptics channels.
+- The ABI v2 authored-stereo analyzer accepts exactly two ordered haptics channels.
   It preserves filter history across arbitrary input chunks, automatically
   resets on a sequence gap, and exposes a separate capacity query that includes
   a buffered partial window.

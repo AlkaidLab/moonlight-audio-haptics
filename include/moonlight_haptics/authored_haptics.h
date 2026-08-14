@@ -62,7 +62,8 @@ typedef struct AhAuthoredLaneFrame {
     float peak_amplitude;         /* Linear full scale, 0.0 .. 1.0. */
     float transient_strength;     /* Relative attack, 0.0 .. 1.0. */
     float low_band_ratio;         /* Energy below roughly 200 Hz, 0.0 .. 1.0. */
-    float zero_crossing_rate_hz;  /* Texture hint; not a pitch estimate. */
+    /* Zero crossings per second divided by two; a texture hint, not pitch. */
+    float zero_crossing_rate_hz;
     uint32_t reserved[3];
 } AhAuthoredLaneFrame;
 
@@ -78,7 +79,8 @@ typedef struct AhAuthoredHapticFrame {
 } AhAuthoredHapticFrame;
 
 #define AH_AUTHORED_CONFIG_V2_SIZE 48u
-#define AH_AUTHORED_PROCESS_INPUT_V2_SIZE 40u
+#define AH_AUTHORED_PROCESS_INPUT_V2_SIZE \
+    ((uint32_t)(offsetof(AhAuthoredProcessInput, reserved) + sizeof(uint32_t)))
 #define AH_AUTHORED_LANE_FRAME_V2_SIZE 32u
 #define AH_AUTHORED_HAPTIC_FRAME_V2_SIZE 104u
 
