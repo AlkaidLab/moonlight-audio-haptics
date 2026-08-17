@@ -2,6 +2,7 @@
 
 #include "moonlight_haptics/authored_haptics.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -12,11 +13,12 @@ namespace {
 
 std::vector<int16_t> MakeStereoTone(uint32_t frames,
                                     float leftHz,
-                                    float rightHz) {
+                                    float rightHz,
+                                    float sampleRate = 48000.0F) {
     std::vector<int16_t> pcm(static_cast<size_t>(frames) * 2U);
     constexpr float kPi = 3.14159265358979323846F;
     for (uint32_t index = 0; index < frames; ++index) {
-        const float time = static_cast<float>(index) / 48000.0F;
+        const float time = static_cast<float>(index) / sampleRate;
         pcm[static_cast<size_t>(index) * 2U] = static_cast<int16_t>(
             std::sin(2.0F * kPi * leftHz * time) * 16000.0F);
         pcm[static_cast<size_t>(index) * 2U + 1U] = rightHz == 0.0F
@@ -40,6 +42,67 @@ AhAuthoredProcessInput Input(const int16_t* pcm,
     input.first_sample_time_us = timestamp;
     input.sequence_number = sequence;
     return input;
+}
+
+AhAuthoredHapticFrame AnalyzeSteadyTone(AhAuthoredEngine* engine,
+                                        float frequencyHz,
+                                        uint32_t sequence,
+                                        uint32_t sampleRate,
+                                        uint32_t hopFrames) {
+    constexpr uint32_t kHops = 20U; // 100 ms settles the causal filters.
+    const uint32_t frames = hopFrames * kHops;
+    const std::vector<int16_t> pcm = MakeStereoTone(
+        frames, frequencyHz, 0.0F, static_cast<float>(sampleRate));
+    const AhAuthoredProcessInput input = Input(
+        pcm.data(), frames, sequence, AH_AUTHORED_INPUT_STREAM_START,
+        1000000U + static_cast<uint64_t>(sequence) * 100000U);
+    std::vector<AhAuthoredHapticFrame> output(kHops + 4U);
+    uint32_t count = 0U;
+    assert(ah_authored_process_i16(
+               engine, &input, output.data(),
+               static_cast<uint32_t>(output.size()), &count) ==
+           AH_STATUS_OUTPUT_AVAILABLE);
+    assert(count == kHops);
+    return output[count - 1U];
+}
+
+// The tactile band-pass, the 160 Hz crossover and the 40 ms zero-crossing
+// window are all derived from the configured rate, so they are checked at the
+// supported boundaries as well as the common 48 kHz case.
+void AssertTactileBandShaping(uint32_t sampleRate) {
+    AhAuthoredConfig config{};
+    assert(ah_authored_config_init(&config, sampleRate) == AH_STATUS_OK);
+    AhAuthoredEngine* engine = nullptr;
+    assert(ah_authored_create(&config, &engine) == AH_STATUS_OK);
+    const uint32_t hop = config.analysis_hop_frames;
+
+    const AhAuthoredHapticFrame belowBand =
+        AnalyzeSteadyTone(engine, 20.0F, 11U, sampleRate, hop);
+    const AhAuthoredHapticFrame lowTactile =
+        AnalyzeSteadyTone(engine, 120.0F, 12U, sampleRate, hop);
+    const AhAuthoredHapticFrame highTactile =
+        AnalyzeSteadyTone(engine, 300.0F, 13U, sampleRate, hop);
+    const AhAuthoredHapticFrame aboveBand =
+        AnalyzeSteadyTone(engine, 1000.0F, 14U, sampleRate, hop);
+
+    const float weakestInBand = std::min(lowTactile.lanes[0].rms_amplitude,
+                                         highTactile.lanes[0].rms_amplitude);
+    const float strongestOutOfBand =
+        std::max(belowBand.lanes[0].rms_amplitude,
+                 aboveBand.lanes[0].rms_amplitude);
+    assert(weakestInBand > strongestOutOfBand * 8.0F);
+    assert(lowTactile.lanes[0].rms_amplitude >
+           belowBand.lanes[0].rms_amplitude * 8.0F);
+    assert(highTactile.lanes[0].rms_amplitude >
+           aboveBand.lanes[0].rms_amplitude * 8.0F);
+    assert(lowTactile.lanes[0].low_band_ratio >
+           highTactile.lanes[0].low_band_ratio + 0.25F);
+    assert(lowTactile.lanes[0].zero_crossing_rate_hz > 180.0F);
+    assert(lowTactile.lanes[0].zero_crossing_rate_hz < 300.0F);
+    assert(highTactile.lanes[0].zero_crossing_rate_hz > 500.0F);
+    assert(highTactile.lanes[0].zero_crossing_rate_hz < 700.0F);
+
+    ah_authored_destroy(engine);
 }
 
 } // namespace
@@ -89,12 +152,22 @@ int main() {
     assert(count == 1U);
     assert(output[0].timestamp_us == 1005000U);
     assert((output[0].flags & AH_AUTHORED_FRAME_DISCONTINUITY) != 0U);
-    assert(output[0].lanes[0].rms_amplitude > 0.2F);
+    // The causal four-pole tactile filters cost roughly half the settled level
+    // on the first 5 ms hop; anything below that is an onset-latency
+    // regression.
+    assert(output[0].lanes[0].rms_amplitude > 0.12F);
     assert(output[0].lanes[1].rms_amplitude == 0.0F);
     assert(output[0].lanes[0].low_band_ratio > 0.2F);
     assert(output[0].lanes[0].zero_crossing_rate_hz >= 180.0F);
     assert(output[0].lanes[0].zero_crossing_rate_hz < 300.0F);
     const float oneShotRms = output[0].lanes[0].rms_amplitude;
+
+    // Authored features describe the tactile passband rather than arbitrary
+    // audio energy. Sub-bass drift and high-frequency hiss must not turn into
+    // persistent legacy rumble, while the low/high split remains useful.
+    AssertTactileBandShaping(8000U);
+    AssertTactileBandShaping(48000U);
+    AssertTactileBandShaping(192000U);
 
     // Chunk boundaries do not change a complete hop's output.
     ah_authored_reset(engine);
