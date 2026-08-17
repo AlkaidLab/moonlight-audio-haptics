@@ -10,6 +10,11 @@ while the public ABI has its own explicit version reported by
   preserving the existing ABI v1 scene-authoring API.
 - Preserve left/right source lanes in causal 5 ms IR frames with no processing
   allocation, locking, device calibration, or actuator-specific curves.
+- Restrict every authored lane feature to a fourth-order Butterworth 50-400 Hz
+  tactile band so sub-bass drift and high-frequency hiss no longer become
+  persistent rumble; amplitude, attack, correlation, and the silence flag all
+  now describe that band rather than full-range audio energy.- Derive the low-band ratio from a 160 Hz crossover and the zero-crossing
+  texture from a trailing causal 40 ms window.
 - Reset cleanly on explicit discontinuity or sequence gaps and flush a marked
   partial tail at end-of-stream.
 - Add ABI-size, lane-isolation, chunk-invariance, discontinuity, timestamp, and

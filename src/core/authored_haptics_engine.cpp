@@ -145,8 +145,10 @@ void PushCrossing(LaneAccumulator& lane, bool crossing) noexcept {
     }
     lane.crossingWindow[lane.crossingWindowPosition] = sample;
     lane.crossingWindowSum += sample;
-    lane.crossingWindowPosition = static_cast<uint32_t>(
-        (lane.crossingWindowPosition + 1U) % lane.crossingWindow.size());
+    ++lane.crossingWindowPosition;
+    if (lane.crossingWindowPosition == lane.crossingWindow.size()) {
+        lane.crossingWindowPosition = 0U;
+    }
 }
 
 AhStatus ValidateConfig(const AhAuthoredConfig* config) noexcept {

@@ -61,10 +61,11 @@ The separate authored-stereo API in
 where a client cannot receive original DualSense haptics PCM. It emits one
 device-independent lane per source channel every 5 ms: fourth-order
 Butterworth-filtered 50-400 Hz RMS and peak amplitude, attack strength, energy
-below roughly 160 Hz, and a causal 40 ms zero-crossing texture. The lanes are
-never downmixed. Sequence gaps and explicit discontinuities reset filter
-history and mark the first new frame so
-a client can ramp cleanly instead of replaying stale energy. End-of-stream
+below roughly 160 Hz, and a causal 40 ms zero-crossing texture. Every lane
+field, including the frame silence flag, describes that tactile band rather
+than full-range audio level. The lanes are never downmixed. Sequence gaps and
+explicit discontinuities reset filter history and mark the first new frame so a
+client can ramp cleanly instead of replaying stale energy. End-of-stream
 flushes a marked partial frame.
 
 This authored IR is intentionally lossy and is not a replacement for raw PCM.

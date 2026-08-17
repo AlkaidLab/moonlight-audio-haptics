@@ -13,7 +13,8 @@ Moonlight Audio Haptics 0.7 contains five provenance classes:
 4. the GAME percussive/tonal features are project-written Apache-2.0 code
    informed by published median-filter HPSS and SuperFlux methods;
 5. the ABI v2 authored-stereo analyzer is project-written Apache-2.0 code
-   using cascaded first-order causal filters and standard time-domain
+   using a fourth-order Butterworth causal tactile band-pass, a first-order
+   causal crossover for the low-band ratio, and standard time-domain
    amplitude, attack, zero-crossing, and cross-correlation measurements.
 
 The SDK does not compile or link aubio. It has no third-party runtime binary or
@@ -25,13 +26,15 @@ model dependency.
 extractor. Each source lane maintains its own state; no downmix, antiphase
 fusion, pitch tracker, learned model, or device response curve is used. The
 analysis uses fourth-order Butterworth 50 Hz high-pass and 400 Hz low-pass
-filters, then complementary cascaded 160 Hz low/high-pass branches for the
-low-band energy ratio. Coefficients are derived from the configured sample
-rate. RMS, peak, and positive attack operate on the tactile-band waveform;
-zero-crossing
-rate uses its trailing causal 40 ms history; normalized lane correlation uses
-the same filtered lanes. These features form a lossy transport fallback and
-are not claimed to recreate the source PCM or estimate musical pitch.
+filters, each realised as two bilinear-transform biquad sections, then splits
+the result with cascaded first-order 160 Hz low-pass and high-pass branches
+whose energies are normalized against each other to form the low-band ratio.
+The branches are not power-complementary; only their normalized ratio is used.
+Coefficients are derived from the configured sample rate. RMS, peak, and
+positive attack operate on the tactile-band waveform; the zero-crossing rate
+uses its trailing causal 40 ms history; normalized lane correlation uses the
+same filtered lanes. These features form a lossy transport fallback and are
+not claimed to recreate the source PCM or estimate musical pitch.
 
 ## Public methods used
 

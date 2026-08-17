@@ -35,6 +35,7 @@ enum {
     AH_AUTHORED_FRAME_DISCONTINUITY = 1u << 0,
     AH_AUTHORED_FRAME_PARTIAL = 1u << 1,
     AH_AUTHORED_FRAME_STREAM_END = 1u << 2,
+    /* Tactile-band peak at or below the floor, not full-range silence. */
     AH_AUTHORED_FRAME_SILENT = 1u << 3
 };
 
@@ -58,6 +59,8 @@ typedef struct AhAuthoredProcessInput {
 } AhAuthoredProcessInput;
 
 typedef struct AhAuthoredLaneFrame {
+    /* Amplitude, attack and ratio fields describe the analysis hop; the
+       zero-crossing rate is a slower trailing 40 ms estimate. */
     float rms_amplitude;          /* 50-400 Hz linear full scale, 0.0 .. 1.0. */
     float peak_amplitude;         /* 50-400 Hz linear full scale, 0.0 .. 1.0. */
     float transient_strength;     /* Relative attack, 0.0 .. 1.0. */
