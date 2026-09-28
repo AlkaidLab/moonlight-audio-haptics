@@ -27,16 +27,16 @@ float Lerp(float start, float end, float amount) noexcept {
 CausalOnsetDetector::CausalOnsetDetector(uint32_t sampleRate, uint32_t hopSize)
     : refractoryFrames_(std::max(
           1U,
-          static_cast<uint32_t>(std::ceil(
+          static_cast<uint32_t>(static_cast<long>(std::ceil(
               static_cast<double>(params::kRefractorySeconds) *
               static_cast<double>(sampleRate) /
-              static_cast<double>(hopSize))))),
+              static_cast<double>(hopSize)))))),
       sensitiveRefractoryFrames_(std::max(
           1U,
-          static_cast<uint32_t>(std::ceil(
+          static_cast<uint32_t>(static_cast<long>(std::ceil(
               static_cast<double>(params::kSensitiveRefractorySeconds) *
               static_cast<double>(sampleRate) /
-              static_cast<double>(hopSize))))) {
+              static_cast<double>(hopSize)))))) {
     Reset();
 }
 

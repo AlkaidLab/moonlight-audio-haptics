@@ -23,9 +23,9 @@ uint32_t SecondsToHops(float seconds,
                        uint32_t hopSize) noexcept {
     return std::max(
         1U,
-        static_cast<uint32_t>(std::ceil(
+        static_cast<uint32_t>(static_cast<long>(std::ceil(
             static_cast<double>(seconds) * static_cast<double>(sampleRate) /
-            static_cast<double>(hopSize))));
+            static_cast<double>(hopSize)))));
 }
 
 } // namespace

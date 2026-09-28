@@ -44,9 +44,9 @@ uint32_t SecondsToHops(float seconds,
                        uint32_t hopSize) noexcept {
     return std::max(
         1U,
-        static_cast<uint32_t>(std::ceil(
+        static_cast<uint32_t>(static_cast<long>(std::ceil(
             static_cast<double>(seconds) * static_cast<double>(sampleRate) /
-            static_cast<double>(hopSize))));
+            static_cast<double>(hopSize)))));
 }
 
 float TactusPrior(uint32_t bpm) noexcept {
@@ -521,7 +521,7 @@ void CausalRhythmClock::EvaluateTempo() noexcept {
         const float beatHops = 60.0F * static_cast<float>(sampleRate_) /
                                (bpm * static_cast<float>(hopSize_));
         phaseSettlingHops_ = static_cast<uint32_t>(
-            std::max(1.0F, std::round(0.5F * beatHops)));
+            static_cast<long>(std::max(1.0F, std::round(0.5F * beatHops))));
     }
 
     if (coasting_) {
