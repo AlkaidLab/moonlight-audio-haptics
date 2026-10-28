@@ -6,6 +6,12 @@ while the public ABI has its own explicit version reported by
 
 ## Unreleased
 
+- Add the independent `authored_events.h` analysis API for IR v3 transports:
+  per-lane continuous state, immutable timestamped attacks, bounded redundant
+  history and source lifecycle. Existing ABI v1/v2 layouts and behavior remain.
+- Keep transport serialization in the host and actuator/coordination policy in
+  the client. Add native C/ABI, signal, fragmentation and allocation regressions.
+
 - Add ABI v2 authored-stereo analysis for Sunshine fallback transports while
   preserving the existing ABI v1 scene-authoring API.
 - Preserve left/right source lanes in causal 5 ms IR frames with no processing

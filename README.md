@@ -74,6 +74,33 @@ the fallback, and keep the analyzer outside the privileged capture sidecar.
 Moonlight remains responsible for device calibration, actuator mapping, and
 the final render curve.
 
+The additive `include/moonlight_haptics/authored_events.h` API supplies the
+continuous-state/discrete-event analysis used by Sunshine's IR v3 transport.
+`ah_authored_events_create/process_i16/reset/destroy` reuse the existing config
+and input types; the old scene and authored APIs, layouts and ABI version 2
+remain unchanged. The new result has its own versioned native layout and is
+never serialized as a memory block. Transport IR v3 is distinct from SDK ABI
+versioning.
+
+Profile 1 supports 48 kHz stereo and bounded calls of up to 240 source frames.
+The SDK owns the causal 50-180/180-400 Hz continuous layers, transient
+classification, source clock, stream epochs, immutable event IDs and bounded
+event history. It performs no allocation while processing or resetting. Its
+raw RMS/peak diagnostics describe unfiltered PCM; continuous release can
+exceed current raw peak, and SILENT does not imply that release is zero.
+Sunshine owns S16LE/flag adaptation, controller routing, capability negotiation
+and wire encoding. Moonlight owns source-time playout, deduplication, actuator
+capabilities and phone/controller arbitration. No controller ID, wire bytes,
+phone model, preset effect or target-device calibration enters this SDK API.
+
+Detection uses causal half-cycle peak increases, an onset-only upper high-pass
+under strong lower-band energy, and a 64 ms Hann spectral-flatness context for
+stationary broadband noise. It groups candidates for 6 ms before immutable
+publication and retains at most eight recent events for up to 20 ms. Attack
+energy temporarily belongs to the transient rather than being added again as
+continuous body. These rules preserve the tested synthetic rain and steady
+carriers; they have not yet been validated against a captured real-game corpus.
+
 ## Build and test
 
 ```bash

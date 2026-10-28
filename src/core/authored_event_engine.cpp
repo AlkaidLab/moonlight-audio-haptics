@@ -1,0 +1,330 @@
+// SPDX-License-Identifier: Apache-2.0
+#include "moonlight_haptics/authored_events.h"
+#include <cstdint>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <new>
+
+namespace {
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double rate = 48000.0;
+    constexpr std::uint64_t history_us = 20000;
+    constexpr std::uint64_t attack_ownership_us = 25000;
+    const std::array<double, 128> spectrum_window = [] {
+      std::array<double, 128> values {};
+      for (unsigned i = 0; i < values.size(); ++i) values[i] = 0.5 - 0.5 * std::cos(2 * pi * i / (values.size() - 1));
+      return values;
+    }();
+    const std::array<double, 22> spectrum_coefficients = [] {
+      std::array<double, 22> values {};
+      for (unsigned i = 0; i < values.size(); ++i) values[i] = 2 * std::cos(2 * pi * (i + 4) / 128);
+      return values;
+    }();
+    std::atomic<std::uint32_t> next_epoch {1};
+    float unit(double value) { return static_cast<float>(std::clamp(value, 0.0, 1.0)); }
+    struct biquad_t {
+      double b0 {}, b1 {}, b2 {}, a1 {}, a2 {}, z1 {}, z2 {};
+      double push(double x) {
+        const double y = b0 * x + z1;
+        z1 = b1 * x - a1 * y + z2;
+        z2 = b2 * x - a2 * y;
+        return y;
+      }
+      void clear() { z1 = z2 = 0; }
+    };
+    biquad_t filter(double hz, double q, bool high) {
+      const double w = 2 * pi * hz / rate, c = std::cos(w), a = std::sin(w) / (2 * q);
+      const double num = high ? 1 + c : 1 - c, den = 1 + a;
+      return {num * 0.5 / den, (high ? -num : num) / den,
+              num * 0.5 / den, -2 * c / den, (1 - a) / den};
+    }
+    struct bandpass_t {
+      std::array<biquad_t, 4> sections;
+      bandpass_t(double lo, double hi) : sections {
+        filter(lo, 0.541196100146197, true), filter(lo, 1.306562964876377, true),
+        filter(hi, 0.541196100146197, false), filter(hi, 1.306562964876377, false)} {}
+      double push(double x) { for (auto &s : sections) x = s.push(x); return x; }
+      void clear() { for (auto &s : sections) s.clear(); }
+    };
+    struct peak_tracker_t {
+      double previous {}, peak {}, reference {}, attack_peak {};
+      std::uint64_t cycle_start {}, last_attack {};
+      bool have_sample {}, armed {true}, have_attack {};
+      // Carrier-aligned peaks make a steady sine invariant to chunk alignment.
+      bool push(double x, std::uint64_t time, std::uint64_t &event_time, float &strength) {
+        bool onset = false;
+        if (have_sample && ((x >= 0) != (previous >= 0))) {
+          if (peak < attack_peak * 0.65) armed = true;
+          const double increase = peak - reference;
+          if (armed && peak >= 0.0035 && increase >= 0.0015 + reference * 0.75) {
+            onset = true; event_time = cycle_start; strength = unit(peak);
+            last_attack = time; have_attack = true;
+            attack_peak = peak;
+            armed = false;
+          }
+          if (!armed) attack_peak = std::max(attack_peak, peak);
+          reference = peak;
+          peak = 0;
+          cycle_start = time;
+        }
+        if (!have_sample || peak < 0.000001) cycle_start = time;
+        peak = std::max(peak, std::abs(x));
+        previous = x;
+        have_sample = true;
+        return onset;
+      }
+    };
+    struct spectrum_context_t {
+      std::array<double, 128> samples {};
+      unsigned position {}, filled {}, decimation {}, since_update {};
+      double sum {}, flatness {}, flatness_average {};
+      void push(double tactile) {
+        sum += tactile;
+        if (++decimation != 24) return;
+        samples[position] = sum / 24; position = (position + 1) % static_cast<unsigned>(samples.size());
+        filled = std::min(filled + 1, static_cast<unsigned>(samples.size())); sum = 0; decimation = 0;
+        if (++since_update < 10 || filled < samples.size()) return;
+        since_update = 0;
+        double arithmetic = 0, logarithmic = 0;
+        for (const auto coefficient : spectrum_coefficients) {
+          double previous = 0, older = 0;
+          for (unsigned n = 0; n < samples.size(); ++n) {
+            const double current = samples[(position + n) % samples.size()] * spectrum_window[n] + coefficient * previous - older;
+            older = previous; previous = current;
+          }
+          const double power = std::max(1e-16, previous * previous + older * older - coefficient * previous * older);
+          arithmetic += power; logarithmic += std::log(power);
+        }
+        flatness = arithmetic > 1e-8 ? std::exp(logarithmic / 22) / (arithmetic / 22) : 0;
+        flatness_average += 0.11750309741540454 * (flatness - flatness_average);
+      }
+      bool broadband() const { return filled == samples.size() && flatness_average > 0.45; }
+    };
+    struct lane_t {
+      bandpass_t tactile {50, 400}, lower {50, 180}, upper {180, 400};
+      std::array<biquad_t, 4> onset_upper_highpass {
+        filter(180, 0.541196100146197, true), filter(180, 1.306562964876377, true),
+        filter(180, 0.541196100146197, true), filter(180, 1.306562964876377, true)};
+      peak_tracker_t lower_peaks, upper_peaks, isolated_upper_peaks;
+      spectrum_context_t spectrum;
+      double low_energy {}, high_energy {};
+      double measured_low_energy {}, measured_high_energy {};
+      double low_level {}, high_level {};
+      std::uint64_t low_owned_until {}, high_owned_until {};
+      std::array<double, 1536> low_history {}, high_history {};
+      unsigned history_position {};
+      void clear() { tactile.clear(); lower.clear(); upper.clear(); lower_peaks = {}; upper_peaks = {};
+        isolated_upper_peaks = {}; measured_low_energy = measured_high_energy = 0;
+        low_energy = high_energy = low_level = high_level = 0;
+        spectrum = {};
+        low_owned_until = high_owned_until = 0;
+        for (auto &section : onset_upper_highpass) section.clear();
+        low_history = {}; high_history = {}; history_position = 0; }
+    };
+    struct event_t {
+      std::uint32_t id {};
+      std::uint64_t time {};
+      float left {}, right {}, confidence {1}, sharpness {};
+      std::uint64_t created_at {};
+      bool published {};
+    };
+} // namespace
+
+  struct AhAuthoredEventEngine {
+    std::array<lane_t, 2> lanes;
+    std::array<event_t, 8> events {};
+    unsigned event_count {};
+    std::uint32_t epoch {}, frame_sequence {}, event_sequence {}, expected_source {};
+    std::uint64_t anchor {}, sample_count {};
+    std::array<std::uint64_t, 2> upper_attack_time {};
+    std::array<bool, 2> upper_attack_seen {};
+    std::array<std::uint64_t, 2> upper_accepted_time {};
+    std::array<bool, 2> upper_accepted_seen {};
+    bool active {}, seen_source {};
+    void reset(std::uint64_t timestamp) {
+      for (auto &lane : lanes) lane.clear();
+      event_count = 0; sample_count = 0; anchor = timestamp;
+      upper_attack_seen = {};
+      upper_accepted_seen = {};
+      frame_sequence = event_sequence = 0; epoch = next_epoch.fetch_add(1);
+      if (epoch == 0) epoch = next_epoch.fetch_add(1);
+      active = true;
+    }
+    void expire(std::uint64_t now) {
+      unsigned kept = 0;
+      for (unsigned i = 0; i < event_count; ++i)
+        if (now >= events[i].created_at && now - events[i].created_at <= history_us) events[kept++] = events[i];
+      event_count = kept;
+    }
+    bool add(std::uint64_t time, unsigned lane, float strength, float sharpness, bool upper, std::uint64_t now) {
+      if (lanes[lane].spectrum.broadband()) return false;
+      if (!upper && upper_attack_seen[lane] && now - upper_attack_time[lane] <= attack_ownership_us) return false;
+      if (upper) {
+        upper_attack_seen[lane] = true; upper_attack_time[lane] = now;
+      }
+      // Near-simultaneous bands/lanes are one physical attack with two strengths.
+      event_t *target = nullptr;
+      for (unsigned i = event_count; i > 0; --i) {
+        auto &candidate = events[i - 1];
+        const auto distance = time > candidate.time ? time - candidate.time : candidate.time - time;
+        if (!candidate.published && now - candidate.created_at < 6000 && distance <= 6000) { target = &candidate; break; }
+      }
+      if (!target) {
+        if (event_count == events.size()) {
+          std::move(events.begin() + 1, events.end(), events.begin()); --event_count;
+        }
+        target = &events[event_count++];
+        *target = {}; target->id = ++event_sequence; target->time = time; target->confidence = 1;
+        target->created_at = now;
+      }
+      if (lane == 0) target->left = std::max(target->left, strength);
+      else target->right = std::max(target->right, strength);
+      target->sharpness = std::max(target->sharpness, sharpness);
+      if (upper) { upper_accepted_seen[lane] = true; upper_accepted_time[lane] = now; }
+      return true;
+    }
+  };
+
+extern "C" {
+AhStatus ah_authored_events_create(const AhAuthoredConfig* config,
+                                  AhAuthoredEventEngine** out_engine) {
+    if (!out_engine) return AH_STATUS_INVALID_ARGUMENT;
+    *out_engine = nullptr;
+    if (!config || config->struct_size < AH_AUTHORED_CONFIG_V2_SIZE)
+        return AH_STATUS_INVALID_ARGUMENT;
+    if (config->sample_rate != 48000 || config->channel_count != 2 ||
+        (config->analysis_hop_frames != 0 && config->analysis_hop_frames != 240) ||
+        config->feature_flags != 0) return AH_STATUS_UNSUPPORTED;
+    for (const auto reserved : config->reserved)
+        if (reserved != 0) return AH_STATUS_INVALID_ARGUMENT;
+    *out_engine = new (std::nothrow) AhAuthoredEventEngine;
+    return *out_engine ? AH_STATUS_OK : AH_STATUS_OUT_OF_MEMORY;
+}
+
+AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine* engine,
+    const AhAuthoredProcessInput* input, AhAuthoredEventFrame* out_frames,
+    uint32_t out_capacity, uint32_t* out_count) {
+    if (!out_count) return AH_STATUS_INVALID_ARGUMENT;
+    *out_count = 0;
+    if (!engine || !input || input->struct_size < AH_AUTHORED_PROCESS_INPUT_V2_SIZE ||
+        input->reserved != 0 || input->frame_count > 240 || (input->flags & ~7u) ||
+        (input->frame_count && !input->interleaved_pcm) ||
+        (!input->frame_count && !(input->flags & AH_AUTHORED_INPUT_STREAM_END)))
+        return AH_STATUS_INVALID_ARGUMENT;
+    if (!out_capacity) return AH_STATUS_BUFFER_TOO_SMALL;
+    if (!out_frames) return AH_STATUS_INVALID_ARGUMENT;
+    const auto count = input->frame_count;
+    const auto sequence = input->sequence_number;
+    const auto timestamp = input->first_sample_time_us;
+    const auto* pcm = input->interleaved_pcm;
+    const auto source_flags = input->flags;
+    auto &s = *engine;
+    const bool explicit_reset = (source_flags & (AH_AUTHORED_INPUT_STREAM_START | AH_AUTHORED_INPUT_DISCONTINUITY)) != 0;
+    if (s.seen_source && !explicit_reset && (!s.active || static_cast<std::int32_t>(sequence - s.expected_source) < 0))
+      return AH_STATUS_BAD_STATE;
+    const bool reset = !s.active || explicit_reset || sequence != s.expected_source;
+    if (timestamp > std::numeric_limits<std::uint64_t>::max() - 1000000) return AH_STATUS_INVALID_ARGUMENT;
+    if (reset) s.reset(timestamp);
+    s.seen_source = true;
+    s.expected_source = sequence + 1;
+    std::array<double, 2> raw_energy {}, raw_peak {};
+    double tactile_peak = 0;
+    constexpr double energy_alpha = 1.0 - 0.9989588756797245; // 20 ms at 48 kHz
+    for (unsigned frame = 0; frame < count; ++frame) {
+      const auto time = s.anchor + s.sample_count * 1000000 / 48000;
+      s.expire(time);
+      for (unsigned lane_index = 0; lane_index < 2; ++lane_index) {
+        const double x = pcm[frame * 2 + lane_index] / 32768.0;
+        auto &lane = s.lanes[lane_index];
+        raw_energy[lane_index] += x * x; raw_peak[lane_index] = std::max(raw_peak[lane_index], std::abs(x));
+        const double tactile = lane.tactile.push(x);
+        tactile_peak = std::max(tactile_peak, std::abs(tactile));
+        lane.spectrum.push(tactile);
+        const double low = lane.lower.push(x), high = lane.upper.push(x);
+        lane.measured_low_energy += energy_alpha * (low * low - lane.measured_low_energy);
+        lane.measured_high_energy += energy_alpha * (high * high - lane.measured_high_energy);
+        const bool low_dominant = lane.measured_low_energy > lane.measured_high_energy * 2;
+        double onset_high = high;
+        for (auto &section : lane.onset_upper_highpass) onset_high = section.push(onset_high);
+        std::uint64_t event_time = 0; float strength = 0;
+        const bool wide_onset = lane.upper_peaks.push(high, time, event_time, strength);
+        std::uint64_t isolated_time = 0; float isolated_strength = 0;
+        const bool isolated_onset = lane.isolated_upper_peaks.push(onset_high, time, isolated_time, isolated_strength);
+        if (low_dominant) { event_time = isolated_time; strength = isolated_strength; }
+        if ((low_dominant && isolated_onset) || (!low_dominant && wide_onset)) {
+          if (s.add(event_time, lane_index, strength, 0.85f, true, time)) {
+            const auto ago = std::min<std::uint64_t>(lane.high_history.size() - 1, (time - event_time + 5000) * 48000 / 1000000);
+            lane.high_energy = lane.high_history[(lane.history_position + lane.high_history.size() - ago) % lane.high_history.size()];
+            lane.high_owned_until = time + attack_ownership_us;
+          }
+        }
+        if (lane.lower_peaks.push(low, time, event_time, strength)) {
+          if (s.add(event_time, lane_index, strength, 0.25f, false, time) ||
+              (s.upper_accepted_seen[lane_index] && time - s.upper_accepted_time[lane_index] <= attack_ownership_us)) {
+            const auto ago = std::min<std::uint64_t>(lane.low_history.size() - 1, (time - event_time + 5000) * 48000 / 1000000);
+            lane.low_energy = lane.low_history[(lane.history_position + lane.low_history.size() - ago) % lane.low_history.size()];
+            lane.low_owned_until = time + attack_ownership_us;
+          }
+        }
+        const bool low_owned = time < lane.low_owned_until;
+        const bool high_owned = time < lane.high_owned_until;
+        if (!low_owned) lane.low_energy += energy_alpha * (low * low - lane.low_energy);
+        if (!high_owned) lane.high_energy += energy_alpha * (high * high - lane.high_energy);
+        lane.low_history[lane.history_position] = lane.low_energy;
+        lane.high_history[lane.history_position] = lane.high_energy;
+        lane.history_position = (lane.history_position + 1) % static_cast<unsigned>(lane.low_history.size());
+        lane.low_level = std::sqrt(std::max(0.0, lane.low_energy));
+        lane.high_level = std::sqrt(std::max(0.0, lane.high_energy));
+      }
+      ++s.sample_count;
+    }
+    const auto end_time = s.anchor + s.sample_count * 1000000 / 48000;
+    s.expire(end_time);
+    const bool ended = (source_flags & AH_AUTHORED_INPUT_STREAM_END) != 0;
+    if (ended) s.event_count = 0;
+    unsigned mature_count = 0;
+    for (unsigned i = 0; i < s.event_count; ++i)
+      if (end_time - s.events[i].created_at >= 6000) ++mature_count;
+    AhAuthoredEventFrame result {};
+    result.struct_size = AH_AUTHORED_EVENT_FRAME_V1_SIZE;
+    result.flags = (reset ? static_cast<uint32_t>(AH_AUTHORED_FRAME_DISCONTINUITY) : 0u) |
+      (count < 240 && count ? static_cast<uint32_t>(AH_AUTHORED_FRAME_PARTIAL) : 0u) |
+      (ended ? static_cast<uint32_t>(AH_AUTHORED_FRAME_STREAM_END) : 0u) |
+      (ended || tactile_peak <= 1.0 / 32768 ? static_cast<uint32_t>(AH_AUTHORED_FRAME_SILENT) : 0u);
+    result.profile = AH_AUTHORED_EVENT_PROFILE_1;
+    result.epoch = s.epoch;
+    result.frame_sequence = s.frame_sequence++;
+    result.timestamp_us = end_time;
+    result.source_sequence_number = sequence;
+    result.source_frame_count = count;
+    result.event_count = mature_count;
+    for (unsigned i = 0; i < 2; ++i) {
+      auto &lane = result.lanes[i];
+      lane.continuous_low = ended ? 0 : unit(s.lanes[i].low_level);
+      lane.continuous_high = ended ? 0 : unit(s.lanes[i].high_level);
+      lane.raw_rms = count ? unit(std::sqrt(raw_energy[i] / count)) : 0;
+      lane.raw_peak = unit(raw_peak[i]);
+    }
+    unsigned emitted = 0;
+    for (unsigned i = 0; i < s.event_count; ++i) {
+      const auto &event = s.events[i];
+      if (end_time - event.created_at < 6000) continue;
+      result.events[emitted++] = {event.id, 0, event.time, event.left, event.right,
+                                  event.confidence, event.sharpness};
+      s.events[i].published = true;
+    }
+    if (ended) s.active = false;
+    out_frames[0] = result;
+    *out_count = 1;
+    return AH_STATUS_OUTPUT_AVAILABLE;
+  }
+
+void ah_authored_events_reset(AhAuthoredEventEngine* engine) {
+    if (engine) { engine->active = false; engine->seen_source = false; }
+}
+void ah_authored_events_destroy(AhAuthoredEventEngine* engine) { delete engine; }
+} // extern "C"

@@ -2,6 +2,7 @@
 
 #include "moonlight_haptics/audio_haptics.h"
 #include "moonlight_haptics/authored_haptics.h"
+#include "moonlight_haptics/authored_events.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,18 @@ static_assert(AH_AUTHORED_PROCESS_INPUT_V2_SIZE ==
               "AhAuthoredProcessInput ABI v2 prefix changed");
 static_assert(sizeof(AhAuthoredHapticFrame) == 104,
               "AhAuthoredHapticFrame ABI v2 changed");
+static_assert(std::is_standard_layout<AhAuthoredEventFrame>::value,
+              "Authored event frame must be standard-layout");
+static_assert(sizeof(AhAuthoredContinuousLane) == AH_AUTHORED_CONTINUOUS_LANE_V1_SIZE,
+              "Continuous lane ABI changed");
+static_assert(sizeof(AhAuthoredEvent) == AH_AUTHORED_EVENT_V1_SIZE,
+              "Authored event ABI changed");
+static_assert(sizeof(AhAuthoredEventFrame) == AH_AUTHORED_EVENT_FRAME_V1_SIZE,
+              "Authored event frame ABI changed");
+static_assert(offsetof(AhAuthoredEventFrame, timestamp_us) == 8 &&
+              offsetof(AhAuthoredEventFrame, lanes) == 40 &&
+              offsetof(AhAuthoredEventFrame, events) == 72,
+              "Native result ABI is independent of transport wire offsets");
 static_assert(offsetof(AhHapticFrame, timestamp_us) == 8, "timestamp offset changed");
 static_assert(offsetof(AhHapticFrame, continuous_amplitude) == 16,
               "continuous amplitude offset changed");
