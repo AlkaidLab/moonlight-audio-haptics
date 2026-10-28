@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "moonlight_haptics/authored_events.h"
+#include "dsp/biquad.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -10,6 +11,9 @@
 #include <new>
 
 namespace {
+namespace dsp = moonlight::haptics::dsp;
+using dsp::kButterworthFourthOrderQ;
+
 constexpr double pi = 3.14159265358979323846;
 constexpr double rate = 48000.0;
 constexpr std::uint64_t history_us = 20000;
@@ -32,26 +36,23 @@ std::uint64_t elapsed_us(std::uint64_t samples) {
 }
 float unit(double value) { return static_cast<float>(std::clamp(value, 0.0, 1.0)); }
 struct biquad_t {
-    double b0{}, b1{}, b2{}, a1{}, a2{}, z1{}, z2{};
+    dsp::BiquadCoefficients coefficients;
+    dsp::BiquadState state;
     double push(double x) {
-        const double y = b0 * x + z1;
-        z1 = b1 * x - a1 * y + z2;
-        z2 = b2 * x - a2 * y;
-        return y;
+        return dsp::ProcessBiquad(x, coefficients, state);
     }
-    void clear() { z1 = z2 = 0; }
+    void clear() { state = {}; }
 };
 biquad_t filter(double hz, double q, bool high) {
-    const double w = 2 * pi * hz / rate, c = std::cos(w), a = std::sin(w) / (2 * q);
-    const double num = high ? 1 + c : 1 - c, den = 1 + a;
-    return {num * 0.5 / den, (high ? -num : num) / den, num * 0.5 / den, -2 * c / den,
-            (1 - a) / den};
+    return {dsp::MakeButterworthSection(2 * pi * hz / rate, q, high), {}};
 }
 struct bandpass_t {
     std::array<biquad_t, 4> sections;
     bandpass_t(double lo, double hi)
-        : sections{filter(lo, 0.541196100146197, true), filter(lo, 1.306562964876377, true),
-                   filter(hi, 0.541196100146197, false), filter(hi, 1.306562964876377, false)} {}
+        : sections{filter(lo, kButterworthFourthOrderQ[0], true),
+                   filter(lo, kButterworthFourthOrderQ[1], true),
+                   filter(hi, kButterworthFourthOrderQ[0], false),
+                   filter(hi, kButterworthFourthOrderQ[1], false)} {}
     double push(double x) {
         for (auto &s : sections)
             x = s.push(x);
@@ -135,8 +136,10 @@ struct spectrum_context_t {
 struct lane_t {
     bandpass_t tactile{50, 400}, lower{50, 180}, upper{180, 400};
     std::array<biquad_t, 4> onset_upper_highpass{
-        filter(180, 0.541196100146197, true), filter(180, 1.306562964876377, true),
-        filter(180, 0.541196100146197, true), filter(180, 1.306562964876377, true)};
+        filter(180, kButterworthFourthOrderQ[0], true),
+        filter(180, kButterworthFourthOrderQ[1], true),
+        filter(180, kButterworthFourthOrderQ[0], true),
+        filter(180, kButterworthFourthOrderQ[1], true)};
     peak_tracker_t lower_peaks, upper_peaks, isolated_upper_peaks;
     spectrum_context_t spectrum;
     double low_energy{}, high_energy{};

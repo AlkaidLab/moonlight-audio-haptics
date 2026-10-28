@@ -2,8 +2,9 @@
 
 #include "moonlight_haptics/authored_haptics.h"
 
+#include "dsp/biquad.h"
+
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -17,6 +18,11 @@ static_assert(sizeof(AhAuthoredProcessInput) ==
 
 namespace {
 
+using moonlight::haptics::dsp::BiquadCoefficients;
+using moonlight::haptics::dsp::BiquadState;
+using moonlight::haptics::dsp::kButterworthFourthOrderQ;
+using moonlight::haptics::dsp::ProcessBiquad;
+
 constexpr uint32_t kMinimumSampleRate = 8000;
 constexpr uint32_t kMaximumSampleRate = 192000;
 constexpr float kSilenceFloor = 1.0F / 32768.0F;
@@ -25,22 +31,6 @@ constexpr float kTactileHighPassHz = 50.0F;
 constexpr float kTactileLowPassHz = 400.0F;
 constexpr float kLowBandSplitHz = 160.0F;
 constexpr float kZeroCrossingWindowSeconds = 0.040F;
-constexpr std::array<double, 2> kButterworthFourthOrderQ = {
-    0.541196100146197,
-    1.306562964876377};
-
-struct BiquadCoefficients {
-    double b0 = 0.0;
-    double b1 = 0.0;
-    double b2 = 0.0;
-    double a1 = 0.0;
-    double a2 = 0.0;
-};
-
-struct BiquadState {
-    double z1 = 0.0;
-    double z2 = 0.0;
-};
 
 struct LaneAccumulator {
     double squareSum = 0.0;
@@ -80,27 +70,10 @@ BiquadCoefficients MakeButterworthSection(float frequency,
                                           float sampleRate,
                                           double quality,
                                           bool highPass) noexcept {
-    const double omega = 2.0 * static_cast<double>(kPi) * frequency /
-                         sampleRate;
-    const double cosine = std::cos(omega);
-    const double alpha = std::sin(omega) / (2.0 * quality);
-    const double a0 = 1.0 + alpha;
-    const double numerator = highPass ? 1.0 + cosine : 1.0 - cosine;
-    return {
-        numerator * 0.5 / a0,
-        (highPass ? -numerator : numerator) / a0,
-        numerator * 0.5 / a0,
-        -2.0 * cosine / a0,
-        (1.0 - alpha) / a0};
-}
-
-double ProcessBiquad(double input,
-                     const BiquadCoefficients& coefficients,
-                     BiquadState& state) noexcept {
-    const double output = coefficients.b0 * input + state.z1;
-    state.z1 = coefficients.b1 * input - coefficients.a1 * output + state.z2;
-    state.z2 = coefficients.b2 * input - coefficients.a2 * output;
-    return output;
+    // Preserve v2's float-rounded pi when converting frequency to radians.
+    return moonlight::haptics::dsp::MakeButterworthSection(
+        2.0 * static_cast<double>(kPi) * frequency / sampleRate,
+        quality, highPass);
 }
 
 float FilterTactileBand(LaneAccumulator& lane,
