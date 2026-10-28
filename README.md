@@ -75,11 +75,11 @@ Moonlight remains responsible for device calibration, actuator mapping, and
 the final render curve.
 
 The additive `include/moonlight_haptics/authored_events.h` API supplies the
-continuous-state/discrete-event analysis used by Sunshine's IR v3 transport.
+continuous-state/discrete-event analysis used by Sunshine's optional IR v2 enhancement.
 `ah_authored_events_create/process_i16/reset/destroy` reuse the existing config
 and input types; the old scene and authored APIs, layouts and ABI version 2
 remain unchanged. The new result has its own versioned native layout and is
-never serialized as a memory block. Transport IR v3 is distinct from SDK ABI
+never serialized as a memory block. The IR extension version is distinct from SDK ABI
 versioning.
 
 Profile 1 supports 48 kHz stereo and bounded calls of up to 240 source frames.
@@ -88,7 +88,9 @@ classification, source clock, stream epochs, immutable event IDs and bounded
 event history. It performs no allocation while processing or resetting. Its
 raw RMS/peak diagnostics describe unfiltered PCM; continuous release can
 exceed current raw peak, and SILENT does not imply that release is zero.
-Sunshine owns S16LE/flag adaptation, controller routing, capability negotiation
+Sunshine reuses the original authored API and v2 writer for the unchanged base,
+then appends continuous/event enhancement only for negotiated clients. It owns
+S16LE/flag adaptation, controller routing, capability negotiation
 and wire encoding. Moonlight owns source-time playout, deduplication, actuator
 capabilities and phone/controller arbitration. No controller ID, wire bytes,
 phone model, preset effect or target-device calibration enters this SDK API.

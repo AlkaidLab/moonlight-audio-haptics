@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /* Additive SDK ABI v2 API for continuous state and discrete authored attacks.
- * This is a native result structure, NOT the IR v3 transport wire layout.
+ * This is a native result structure, NOT the authored IR transport wire layout.
  * Profile 1 accepts 48 kHz stereo, 0..240 frames per call (zero only for END).
  * One successful call produces one result. Source chunks are not DSP windows.
  * Engines are independent and must each be accessed serially by their owner.

@@ -6,7 +6,7 @@ while the public ABI has its own explicit version reported by
 
 ## Unreleased
 
-- Add the independent `authored_events.h` analysis API for IR v3 transports:
+- Add the independent `authored_events.h` analysis API for optional IR v2 enhancement:
   per-lane continuous state, immutable timestamped attacks, bounded redundant
   history and source lifecycle. Existing ABI v1/v2 layouts and behavior remain.
 - Keep transport serialization in the host and actuator/coordination policy in
