@@ -111,6 +111,7 @@ namespace {
   }
   struct Result {
     std::map<uint32_t, AhAuthoredEvent> events;
+    std::map<uint64_t, std::array<float, 4>> continuous;
     double body = 0;
     unsigned bodyCount = 0;
   };
@@ -125,6 +126,9 @@ namespace {
         engine.get(), Input(pcm.data() + start * 2, count, sequence++,
                         start ? 0u : static_cast<uint32_t>(AH_AUTHORED_INPUT_STREAM_START),
                         uint64_t(start) * 1000000 / 48000));
+      result.continuous.emplace(frame.timestamp_us, std::array<float, 4> {
+                                                      frame.lanes[0].continuous_low, frame.lanes[0].continuous_high,
+                                                      frame.lanes[1].continuous_low, frame.lanes[1].continuous_high });
       for (unsigned i = 0; i < frame.event_count; ++i) {
         const auto &event = frame.events[i];
         const auto added = result.events.emplace(event.event_id, event);
@@ -208,12 +212,15 @@ namespace {
       const auto result = Analyze(pcm, 240);
       assert(result.events.size() == density * 2);
       unsigned index = 0;
+      bool rightActive = false;
       for (const auto &item : result.events) {
         const auto &event = item.second;
         const double source = .4 + index++ / double(density);
         assert(event.source_time_us / 1e6 >= source - .005 &&
                event.source_time_us / 1e6 <= source + .020);
+        rightActive |= event.right_strength > 0;
       }
+      assert(rightActive);
     }
     auto pcm = Tone(.4);
     for (unsigned i = 0; i < 10; ++i)
@@ -226,19 +233,39 @@ namespace {
       assert(item.second.left_strength == other.left_strength &&
              item.second.right_strength == 0 && other.right_strength == 0);
     }
+    // Co-prime chunks share only occasional endpoints; keep the signal active there.
+    const auto steady = Tone(1.5, 85, .12);
+    const auto continuousA = Analyze(steady, 240), continuousB = Analyze(steady, 137);
+    unsigned matched = 0;
+    for (const auto &sample : continuousA.continuous) {
+      const auto other = continuousB.continuous.find(sample.first);
+      if (other == continuousB.continuous.end())
+        continue;
+      for (unsigned i = 0; i < sample.second.size(); ++i)
+        assert(std::abs(sample.second[i] - other->second[i]) <= 1e-6f);
+      ++matched;
+    }
+    assert(matched >= 2);
   }
   void
   ProcessingAllocatesNothing() {
     auto engine = Create();
-    const auto tone = Tone(.005, 250, .12);
-    auto input = Input(tone.data(), 240, 0, AH_AUTHORED_INPUT_STREAM_START);
+    auto pcm = Tone(.020);
+    Pulse(pcm, 0, 0);
+    // Warm 15 ms before measuring a call that copies mature events to its output.
+    for (uint32_t sequence = 0; sequence < 3; ++sequence)
+      Process(engine.get(), Input(pcm.data() + sequence * 480, 240, sequence,
+                              sequence ? 0u : static_cast<uint32_t>(AH_AUTHORED_INPUT_STREAM_START),
+                              sequence * 5000));
+    auto input = Input(pcm.data() + 3 * 480, 240, 3, 0, 15000);
     AhAuthoredEventFrame output {};
     uint32_t count = 0;
+    allocations = 0;
     watchAllocations = true;
     const auto status = ah_authored_events_process_i16(engine.get(), &input, &output, 1, &count);
-    ah_authored_events_reset(engine.get());
     watchAllocations = false;
     assert(status == AH_STATUS_OUTPUT_AVAILABLE && count == 1 && allocations == 0);
+    assert(output.event_count > 0);
   }
 }  // namespace
 int
