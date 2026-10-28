@@ -204,8 +204,10 @@ namespace {
     for (double frequency : { 85., 250., 300. }) {
       const auto result = Analyze(Tone(1, frequency, .12), 240);
       for (const auto &sample : result.continuous)
-        if (sample.first >= 200000 && sample.first <= 800000)
+        if (sample.first >= 200000 && sample.first <= 800000) {
           assert(std::max(sample.second[0], sample.second[1]) > .01f);
+          assert(std::max(sample.second[2], sample.second[3]) > .01f);
+        }
       for (const auto &item : result.events)
         assert(item.second.source_time_us < 200000);
     }
