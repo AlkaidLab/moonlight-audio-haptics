@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <new>
@@ -15,12 +14,15 @@
 namespace {
   bool watchAllocations = false;
   unsigned allocations = 0;
+  void *
+  Allocate(std::size_t size) noexcept {
+    if (watchAllocations) ++allocations;
+    return std::malloc(size ? size : 1);
+  }
 }  // namespace
 void *
 operator new(std::size_t size) {
-  if (watchAllocations)
-    ++allocations;
-  if (void *value = std::malloc(size ? size : 1))
+  if (void *value = Allocate(size))
     return value;
   throw std::bad_alloc();
 }
@@ -37,14 +39,7 @@ operator delete[](void *value, std::size_t) noexcept { ::operator delete(value);
 // Keep the SDK's nothrow allocation on the same malloc/free test hooks. Otherwise
 // ASan intercepts nothrow new but reaches our free-based delete and reports a mismatch.
 void *
-operator new(std::size_t size, const std::nothrow_t &) noexcept {
-  try {
-    return ::operator new(size);
-  }
-  catch (...) {
-    return nullptr;
-  }
-}
+operator new(std::size_t size, const std::nothrow_t &) noexcept { return Allocate(size); }
 void
 operator delete(void *value, const std::nothrow_t &) noexcept { ::operator delete(value); }
 void *
@@ -77,13 +72,22 @@ namespace {
     return input;
   }
   AhAuthoredEventFrame
-  Process(AhAuthoredEventEngine *engine, AhAuthoredProcessInput input) {
+  Process(AhAuthoredEventEngine *engine, AhAuthoredProcessInput input,
+    AhStatus expected = AH_STATUS_OUTPUT_AVAILABLE, uint32_t capacity = 1) {
     AhAuthoredEventFrame frame {};
-    uint32_t count = 0;
-    assert(ah_authored_events_process_i16(engine, &input, &frame, 1, &count) ==
-           AH_STATUS_OUTPUT_AVAILABLE);
-    assert(count == 1 && frame.struct_size == AH_AUTHORED_EVENT_FRAME_V1_SIZE);
-    assert(frame.profile == AH_AUTHORED_EVENT_PROFILE_1);
+    uint32_t count = 99;
+    // Monitor only the SDK call, including every mature-event publication in Analyze.
+    allocations = 0;
+    watchAllocations = true;
+    const auto status = ah_authored_events_process_i16(engine, &input, &frame, capacity, &count);
+    watchAllocations = false;
+    assert(status == expected);
+    assert(allocations == 0);
+    assert(count == (expected == AH_STATUS_OUTPUT_AVAILABLE ? 1u : 0u));
+    if (count) {
+      assert(frame.struct_size == AH_AUTHORED_EVENT_FRAME_V1_SIZE);
+      assert(frame.profile == AH_AUTHORED_EVENT_PROFILE_1);
+    }
     return frame;
   }
   std::vector<int16_t>
@@ -112,8 +116,6 @@ namespace {
   struct Result {
     std::map<uint32_t, AhAuthoredEvent> events;
     std::map<uint64_t, std::array<float, 4>> continuous;
-    double body = 0;
-    unsigned bodyCount = 0;
   };
   Result
   Analyze(const std::vector<int16_t> &pcm, unsigned chunk) {
@@ -126,9 +128,10 @@ namespace {
         engine.get(), Input(pcm.data() + start * 2, count, sequence++,
                         start ? 0u : static_cast<uint32_t>(AH_AUTHORED_INPUT_STREAM_START),
                         uint64_t(start) * 1000000 / 48000));
-      result.continuous.emplace(frame.timestamp_us, std::array<float, 4> {
-                                                      frame.lanes[0].continuous_low, frame.lanes[0].continuous_high,
-                                                      frame.lanes[1].continuous_low, frame.lanes[1].continuous_high });
+      result.continuous[frame.timestamp_us] = {
+        frame.lanes[0].continuous_low, frame.lanes[0].continuous_high,
+        frame.lanes[1].continuous_low, frame.lanes[1].continuous_high
+      };
       for (unsigned i = 0; i < frame.event_count; ++i) {
         const auto &event = frame.events[i];
         const auto added = result.events.emplace(event.event_id, event);
@@ -140,10 +143,6 @@ namespace {
           assert(original.confidence == event.confidence &&
                  original.sharpness == event.sharpness);
         }
-      }
-      if (frame.timestamp_us >= 200000 && frame.timestamp_us <= 800000) {
-        result.body += std::max(frame.lanes[0].continuous_low, frame.lanes[0].continuous_high);
-        ++result.bodyCount;
       }
     }
     const auto end =
@@ -158,35 +157,26 @@ namespace {
     std::array<int16_t, 480> silence {};
     auto input =
       Input(silence.data(), 240, UINT32_MAX - 1, AH_AUTHORED_INPUT_STREAM_START, 1000000);
-    AhAuthoredEventFrame frame {};
-    uint32_t count = 99;
-    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 0, &count) ==
-           AH_STATUS_BUFFER_TOO_SMALL);
-    assert(count == 0);
+    Process(engine.get(), input, AH_STATUS_BUFFER_TOO_SMALL, 0);
     input.reserved = 1;
-    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
-           AH_STATUS_INVALID_ARGUMENT);
+    Process(engine.get(), input, AH_STATUS_INVALID_ARGUMENT);
     input.reserved = 0;
     input.flags |= AH_AUTHORED_INPUT_STREAM_END;
-    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
-             AH_STATUS_INVALID_ARGUMENT &&
-           count == 0);
+    Process(engine.get(), input, AH_STATUS_INVALID_ARGUMENT);
     input.flags = AH_AUTHORED_INPUT_STREAM_START;
-    frame = Process(engine.get(), input);
+    const auto frame = Process(engine.get(), input);
     const auto epoch = frame.epoch;
     assert(frame.frame_sequence == 0 && frame.timestamp_us == 1005000);
     Process(engine.get(), Input(silence.data(), 240, UINT32_MAX));
     assert(Process(engine.get(), Input(silence.data(), 240, 0)).epoch == epoch);
     input = Input(silence.data(), 240, 0);
-    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
-           AH_STATUS_BAD_STATE);
+    Process(engine.get(), input, AH_STATUS_BAD_STATE);
     const auto gap = Process(engine.get(), Input(silence.data(), 240, 3));
     assert(gap.epoch != epoch && (gap.flags & AH_AUTHORED_FRAME_DISCONTINUITY));
     const auto end = Process(engine.get(), Input(nullptr, 0, 4, AH_AUTHORED_INPUT_STREAM_END));
     assert(end.epoch == gap.epoch && end.event_count == 0);
     input = Input(silence.data(), 240, 5);
-    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
-           AH_STATUS_BAD_STATE);
+    Process(engine.get(), input, AH_STATUS_BAD_STATE);
     ah_authored_events_reset(engine.get());
     assert(Process(engine.get(), input).epoch != end.epoch);
     AhAuthoredConfig config {};
@@ -203,9 +193,7 @@ namespace {
     const auto nearEnd = Process(boundary.get(), Input(silence.data(), 240, 0,
                                                    AH_AUTHORED_INPUT_STREAM_START, UINT64_MAX - 30000));
     input = Input(silence.data(), 240, 1);
-    assert(ah_authored_events_process_i16(boundary.get(), &input, &frame, 1, &count) ==
-             AH_STATUS_INVALID_ARGUMENT &&
-           count == 0);
+    Process(boundary.get(), input, AH_STATUS_INVALID_ARGUMENT);
     // Reuse the rejected sequence: overflow must not consume input or reset the epoch.
     const auto boundaryEnd = Process(boundary.get(), Input(nullptr, 0, 1, AH_AUTHORED_INPUT_STREAM_END));
     assert(boundaryEnd.epoch == nearEnd.epoch && boundaryEnd.frame_sequence == 1);
@@ -215,7 +203,9 @@ namespace {
   SignalFidelity() {
     for (double frequency : { 85., 250., 300. }) {
       const auto result = Analyze(Tone(1, frequency, .12), 240);
-      assert(result.body / result.bodyCount > .01);
+      for (const auto &sample : result.continuous)
+        if (sample.first >= 200000 && sample.first <= 800000)
+          assert(std::max(sample.second[0], sample.second[1]) > .01f);
       for (const auto &item : result.events)
         assert(item.second.source_time_us < 200000);
     }
@@ -273,32 +263,9 @@ namespace {
     }
     assert(matched >= 2);
   }
-  void
-  ProcessingAllocatesNothing() {
-    auto engine = Create();
-    auto pcm = Tone(.020);
-    Pulse(pcm, 0, 0);
-    // Warm 15 ms before measuring a call that copies mature events to its output.
-    for (uint32_t sequence = 0; sequence < 3; ++sequence)
-      Process(engine.get(), Input(pcm.data() + sequence * 480, 240, sequence,
-                              sequence ? 0u : static_cast<uint32_t>(AH_AUTHORED_INPUT_STREAM_START),
-                              sequence * 5000));
-    auto input = Input(pcm.data() + 3 * 480, 240, 3, 0, 15000);
-    AhAuthoredEventFrame output {};
-    uint32_t count = 0;
-    allocations = 0;
-    watchAllocations = true;
-    const auto status = ah_authored_events_process_i16(engine.get(), &input, &output, 1, &count);
-    watchAllocations = false;
-    assert(status == AH_STATUS_OUTPUT_AVAILABLE && count == 1 && allocations == 0);
-    assert(output.event_count > 0);
-  }
 }  // namespace
 int
 main() {
   ApiAndLifecycle();
   SignalFidelity();
-  ProcessingAllocatesNothing();
-  std::cout << "authored event API, lifecycle, signal fidelity, fragmentation and allocation "
-               "checks passed\n";
 }
