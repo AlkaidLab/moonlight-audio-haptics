@@ -38,6 +38,16 @@ not claimed to recreate the source PCM or estimate musical pitch.
 
 ## Public methods used
 
+The additive `src/core/authored_event_engine.cpp` is project-written
+Apache-2.0 code for continuous-state/discrete-event authored IR. Profile 1 uses
+causal Butterworth tactile and crossover filters, carrier-aligned half-cycle
+peak increases, an additional onset-only high-pass under dominant low-band
+energy, and a causal 64 ms Hann/Goertzel spectral-flatness context. The 6 ms
+candidate grouping, 20 ms event history and 25 ms attack-energy ownership are
+project-specific choices. No event-arrival regularity or target-device model
+is used. This path does not alter the existing authored v2 analyzer or scene
+authoring engine. It returns native structured features, not transport packets.
+
 - The iterative radix-2 transform uses the standard Cooley-Tukey FFT
   decomposition described by J. W. Cooley and J. W. Tukey, *An Algorithm for
   the Machine Calculation of Complex Fourier Series*, Mathematics of

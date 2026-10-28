@@ -55,6 +55,7 @@ set_target_properties(moonlight_haptics_fvad_objects PROPERTIES
 add_library(moonlight_haptics_core STATIC
     src/core/audio_haptics_engine.cpp
     src/core/authored_haptics_engine.cpp
+    src/core/authored_event_engine.cpp
     src/core/causal_onset_detector.cpp
     src/core/causal_rhythm_clock.cpp
     src/core/feature_extractor.cpp
@@ -172,6 +173,14 @@ if(MOONLIGHT_HAPTICS_BUILD_TESTS)
         moonlight_haptics_authored_test)
     add_test(NAME moonlight_haptics_authored
         COMMAND moonlight_haptics_authored_test)
+
+    add_executable(moonlight_haptics_authored_events_test
+        tests/authored_events_test.cpp)
+    target_link_libraries(moonlight_haptics_authored_events_test
+        PRIVATE moonlight_haptics_core)
+    moonlight_haptics_enable_test_assertions(moonlight_haptics_authored_events_test)
+    add_test(NAME moonlight_haptics_authored_events
+        COMMAND moonlight_haptics_authored_events_test)
 
     add_executable(moonlight_haptics_dsp_integration_test
         tests/dsp_integration_test.cpp)

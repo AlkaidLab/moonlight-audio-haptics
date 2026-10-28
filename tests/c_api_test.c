@@ -2,6 +2,7 @@
 
 #include "moonlight_haptics/audio_haptics.h"
 #include "moonlight_haptics/authored_haptics.h"
+#include "moonlight_haptics/authored_events.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -19,6 +20,20 @@ int main(void) {
     AhAuthoredEngine* authored_engine = NULL;
     assert(ah_authored_create(&authored_config, &authored_engine) == AH_STATUS_OK);
     ah_authored_destroy(authored_engine);
+
+    AhAuthoredEventEngine* event_engine = NULL;
+    assert(ah_authored_events_create(&authored_config, &event_engine) == AH_STATUS_OK);
+    AhAuthoredProcessInput event_input;
+    memset(&event_input, 0, sizeof(event_input));
+    event_input.struct_size = AH_AUTHORED_PROCESS_INPUT_V2_SIZE;
+    event_input.flags = AH_AUTHORED_INPUT_STREAM_END;
+    AhAuthoredEventFrame event_output;
+    uint32_t event_count = 0;
+    assert(ah_authored_events_process_i16(event_engine, &event_input, &event_output,
+                                         1u, &event_count) == AH_STATUS_OUTPUT_AVAILABLE);
+    assert(event_count == 1u && event_output.event_count == 0u);
+    assert((event_output.flags & AH_AUTHORED_FRAME_STREAM_END) != 0u);
+    ah_authored_events_destroy(event_engine);
 
     AhConfig config;
     assert(ah_config_init(&config, 48000u, 2u) == AH_STATUS_OK);
