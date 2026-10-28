@@ -27,6 +27,9 @@ const std::array<double, 22> spectrum_coefficients = [] {
     return values;
 }();
 std::atomic<std::uint32_t> next_epoch{1};
+std::uint64_t elapsed_us(std::uint64_t samples) {
+    return samples / 48000 * 1000000 + samples % 48000 * 1000000 / 48000;
+}
 float unit(double value) { return static_cast<float>(std::clamp(value, 0.0, 1.0)); }
 struct biquad_t {
     double b0{}, b1{}, b2{}, a1{}, a2{}, z1{}, z2{};
@@ -277,7 +280,8 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
     if (!engine || !input || input->struct_size < AH_AUTHORED_PROCESS_INPUT_V2_SIZE ||
         input->reserved != 0 || input->frame_count > 240 || (input->flags & ~7u) ||
         (input->frame_count && !input->interleaved_pcm) ||
-        (!input->frame_count && !(input->flags & AH_AUTHORED_INPUT_STREAM_END)))
+        (!input->frame_count && !(input->flags & AH_AUTHORED_INPUT_STREAM_END)) ||
+        (input->frame_count && (input->flags & AH_AUTHORED_INPUT_STREAM_END)))
         return AH_STATUS_INVALID_ARGUMENT;
     if (!out_capacity)
         return AH_STATUS_BUFFER_TOO_SMALL;
@@ -295,7 +299,17 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
         (!s.active || static_cast<std::int32_t>(sequence - s.expected_source) < 0))
         return AH_STATUS_BAD_STATE;
     const bool reset = !s.active || explicit_reset || sequence != s.expected_source;
-    if (timestamp > std::numeric_limits<std::uint64_t>::max() - 1000000)
+    const auto anchor = reset ? timestamp : s.anchor;
+    const auto samples = reset ? 0 : s.sample_count;
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    const auto reserve = count ? attack_ownership_us : 0;
+    if (anchor > maximum - reserve || samples > maximum - count)
+        return AH_STATUS_INVALID_ARGUMENT;
+    const auto end_samples = samples + count;
+    const auto budget = maximum - anchor - reserve;
+    // Compare quotient and remainder before multiplying or mutating stream state.
+    if (end_samples / 48000 > budget / 1000000 ||
+        end_samples % 48000 * 1000000 / 48000 > budget - end_samples / 48000 * 1000000)
         return AH_STATUS_INVALID_ARGUMENT;
     if (reset)
         s.reset(timestamp);
@@ -305,7 +319,7 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
     double tactile_peak = 0;
     constexpr double energy_alpha = 1.0 - 0.9989588756797245; // 20 ms at 48 kHz
     for (unsigned frame = 0; frame < count; ++frame) {
-        const auto time = s.anchor + s.sample_count * 1000000 / 48000;
+        const auto time = s.anchor + elapsed_us(s.sample_count);
         s.expire(time);
         for (unsigned lane_index = 0; lane_index < 2; ++lane_index) {
             const double x = pcm[frame * 2 + lane_index] / 32768.0;
@@ -370,7 +384,7 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
         }
         ++s.sample_count;
     }
-    const auto end_time = s.anchor + s.sample_count * 1000000 / 48000;
+    const auto end_time = s.anchor + elapsed_us(s.sample_count);
     s.expire(end_time);
     const bool ended = (source_flags & AH_AUTHORED_INPUT_STREAM_END) != 0;
     if (ended)

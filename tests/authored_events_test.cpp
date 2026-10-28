@@ -167,6 +167,11 @@ namespace {
     assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
            AH_STATUS_INVALID_ARGUMENT);
     input.reserved = 0;
+    input.flags |= AH_AUTHORED_INPUT_STREAM_END;
+    assert(ah_authored_events_process_i16(engine.get(), &input, &frame, 1, &count) ==
+             AH_STATUS_INVALID_ARGUMENT &&
+           count == 0);
+    input.flags = AH_AUTHORED_INPUT_STREAM_START;
     frame = Process(engine.get(), input);
     const auto epoch = frame.epoch;
     assert(frame.frame_sequence == 0 && frame.timestamp_us == 1005000);
@@ -194,6 +199,17 @@ namespace {
     assert(ah_authored_events_create(&config, &unsupported) == AH_STATUS_INVALID_ARGUMENT);
     ah_authored_events_reset(nullptr);
     ah_authored_events_destroy(nullptr);
+    auto boundary = Create();
+    const auto nearEnd = Process(boundary.get(), Input(silence.data(), 240, 0,
+                                                   AH_AUTHORED_INPUT_STREAM_START, UINT64_MAX - 30000));
+    input = Input(silence.data(), 240, 1);
+    assert(ah_authored_events_process_i16(boundary.get(), &input, &frame, 1, &count) ==
+             AH_STATUS_INVALID_ARGUMENT &&
+           count == 0);
+    // Reuse the rejected sequence: overflow must not consume input or reset the epoch.
+    const auto boundaryEnd = Process(boundary.get(), Input(nullptr, 0, 1, AH_AUTHORED_INPUT_STREAM_END));
+    assert(boundaryEnd.epoch == nearEnd.epoch && boundaryEnd.frame_sequence == 1);
+    assert(boundaryEnd.timestamp_us == UINT64_MAX - 25000);
   }
   void
   SignalFidelity() {
@@ -203,6 +219,16 @@ namespace {
       for (const auto &item : result.events)
         assert(item.second.source_time_us < 200000);
     }
+    auto noise = Tone(1);
+    uint32_t random = 1;
+    for (auto &sample : noise) {
+      random = random * 1664525u + 1013904223u;
+      sample = static_cast<int16_t>((int(random >> 16) - 32768) / 4);
+    }
+    // Ignore spectrum warm-up; this steady window must suppress broadband onsets.
+    const auto broadband = Analyze(noise, 240);
+    for (const auto &item : broadband.events)
+      assert(item.second.source_time_us < 500000);
     for (unsigned density : { 25u, 50u, 60u, 80u }) {
       auto pcm = Tone(2.8);
       for (unsigned i = 0; i < density * 2; ++i) {

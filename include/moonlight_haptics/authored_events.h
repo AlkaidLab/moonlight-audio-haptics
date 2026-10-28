@@ -68,7 +68,7 @@ MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(const AhAuthoredConfig 
  * for up to 20 ms for transport redundancy. Consumers deduplicate by epoch/id.
  * Gaps/START/discontinuity create a new epoch. After END, input must carry
  * START or DISCONTINUITY, or the owner must reset the engine first.
- * END is a zero-body, zero-event lifecycle marker, including empty
+ * END requires frame_count == 0 and is a zero-body, zero-event marker, including empty
  * streams. Explicit reset permits a fresh stream without a START flag.
  * Continuous release may exceed this call's raw_peak. SILENT describes only
  * current tactile-band input. No actuator calibration or platform calls occur.
