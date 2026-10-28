@@ -38,7 +38,7 @@ typedef struct AhAuthoredEvent {
 
 typedef struct AhAuthoredEventFrame {
     uint32_t struct_size;
-    uint32_t flags; /* AhAuthoredFrameFlags; SILENT does not clear release. */
+    uint32_t flags;        /* AhAuthoredFrameFlags; SILENT does not clear release. */
     uint64_t timestamp_us; /* Represented window end, on the source clock. */
     uint32_t epoch;
     uint32_t frame_sequence;
@@ -58,8 +58,8 @@ typedef struct AhAuthoredEventFrame {
  * 48000 Hz, two lanes, hop 0/240 and zero feature/reserved fields.
  * Allocation occurs only in create/destroy, never process/reset.
  */
-MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(
-    const AhAuthoredConfig* config, AhAuthoredEventEngine** out_engine);
+MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(const AhAuthoredConfig *config,
+                                                         AhAuthoredEventEngine **out_engine);
 
 /* Reuses AhAuthoredProcessInput and its flag meanings without changing ABI v2.
  * Caller supplies AH_AUTHORED_EVENT_FRAME_V1_SIZE bytes per output slot.
@@ -73,11 +73,13 @@ MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(
  * Continuous release may exceed this call's raw_peak. SILENT describes only
  * current tactile-band input. No actuator calibration or platform calls occur.
  */
-MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_process_i16(
-    AhAuthoredEventEngine* engine, const AhAuthoredProcessInput* input,
-    AhAuthoredEventFrame* out_frames, uint32_t out_capacity, uint32_t* out_count);
-MOONLIGHT_HAPTICS_API void ah_authored_events_reset(AhAuthoredEventEngine* engine);
-MOONLIGHT_HAPTICS_API void ah_authored_events_destroy(AhAuthoredEventEngine* engine);
+MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
+                                                              const AhAuthoredProcessInput *input,
+                                                              AhAuthoredEventFrame *out_frames,
+                                                              uint32_t out_capacity,
+                                                              uint32_t *out_count);
+MOONLIGHT_HAPTICS_API void ah_authored_events_reset(AhAuthoredEventEngine *engine);
+MOONLIGHT_HAPTICS_API void ah_authored_events_destroy(AhAuthoredEventEngine *engine);
 
 #ifdef __cplusplus
 } // extern "C"
