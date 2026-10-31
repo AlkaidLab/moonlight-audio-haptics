@@ -30,7 +30,7 @@ typedef struct AhAuthoredEvent {
     uint32_t event_id;
     uint32_t reserved;
     uint64_t source_time_us;
-    float left_strength;
+    float left_strength;  /* Linear local transient peak above its pre-attack band envelope. */
     float right_strength;
     float confidence; /* Evidence score, not a calibrated probability. */
     float sharpness;
@@ -64,8 +64,14 @@ MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(const AhAuthoredConfig 
 /* Reuses AhAuthoredProcessInput and its flag meanings without changing ABI v2.
  * Caller supplies AH_AUTHORED_EVENT_FRAME_V1_SIZE bytes per output slot.
  * BUFFER_TOO_SMALL / invalid input / stale sequence do not consume input.
- * Events mature for 6 ms, remain immutable after publication, and may repeat
- * for up to 20 ms for transport redundancy. Consumers deduplicate by epoch/id.
+ * Half-cycle rises are candidates, not event eligibility by themselves. Events
+ * require a compact fall in local excess within 18 ms of source onset and at
+ * least 6 ms grouping. Unconfirmed attacks remain in the
+ * continuous envelope; pending decisions temporarily hold its visible baseline.
+ * This is causal shape evidence, not semantic recognition or an actuator preset.
+ * Events remain immutable after publication and may repeat
+ * for up to 20 ms after qualification for transport redundancy.
+ * Consumers deduplicate by epoch/id.
  * Gaps/START/discontinuity create a new epoch. After END, input must carry
  * START or DISCONTINUITY, or the owner must reset the engine first.
  * END requires frame_count == 0 and is a zero-body, zero-event marker, including empty

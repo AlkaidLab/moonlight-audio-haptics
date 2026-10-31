@@ -87,25 +87,31 @@ RunResult RunAccentedDoubleTime(
 
 void AssertLocksKnownTempos() {
     for (float bpm : {72.0F, 90.0F, 120.0F, 160.0F}) {
-        moonlight::haptics::core::CausalRhythmClock clock(kSampleRate, kHopSize);
-        const RunResult result = RunPulseTrain(clock, bpm, 8.0F, true);
-        if (std::abs(result.tempo - bpm) > 2.0F) {
-            std::fprintf(
-                stderr,
-                "known tempo %.1f resolved to %.1f, candidate %.1f, "
-                "confidence %.3f\n",
-                bpm,
-                result.tempo,
-                result.candidateTempo,
-                result.confidence);
+        // A silent prefix changes evaluation phase, not the input tempo.
+        for (uint32_t leadingHops : {0U, 2U, 17U}) {
+            moonlight::haptics::core::CausalRhythmClock clock(kSampleRate, kHopSize);
+            for (uint32_t hop = 0; hop < leadingHops; ++hop)
+                clock.ProcessActivation(0.0F, false, false, false);
+            const RunResult result = RunPulseTrain(clock, bpm, 8.0F, true);
+            if (std::abs(result.tempo - bpm) > 2.0F) {
+                std::fprintf(
+                    stderr,
+                    "known tempo %.1f after %u silent hops resolved to %.1f, candidate %.1f, "
+                    "confidence %.3f\n",
+                    bpm,
+                    leadingHops,
+                    result.tempo,
+                    result.candidateTempo,
+                    result.confidence);
+            }
+            assert(result.locked);
+            assert(std::abs(result.tempo - bpm) <= 2.0F);
+            assert(result.confidence >= 0.65F);
+            assert(result.firstLockHop <= static_cast<uint32_t>(
+                5.0F * static_cast<float>(kHopsPerSecond)));
+            // Detected onsets must never be duplicated as predicted beats.
+            assert(result.reinforcements == 0U);
         }
-        assert(result.locked);
-        assert(std::abs(result.tempo - bpm) <= 2.0F);
-        assert(result.confidence >= 0.65F);
-        assert(result.firstLockHop <= static_cast<uint32_t>(
-            5.0F * static_cast<float>(kHopsPerSecond)));
-        // Detected onsets must never be duplicated as predicted beats.
-        assert(result.reinforcements == 0U);
     }
 }
 

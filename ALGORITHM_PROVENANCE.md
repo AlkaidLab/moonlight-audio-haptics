@@ -43,8 +43,15 @@ Apache-2.0 code for continuous-state/discrete-event authored IR. Profile 1 uses
 causal Butterworth tactile and crossover filters, carrier-aligned half-cycle
 peak increases, an additional onset-only high-pass under dominant low-band
 energy, and a causal 64 ms Hann/Goertzel spectral-flatness context. The 6 ms
-candidate grouping, 20 ms event history and 25 ms attack-energy ownership are
-project-specific choices. No event-arrival regularity or target-device model
+candidate grouping, 25% local-excess fall within 18 ms of source onset,
+3 ms recent-input activity, 20 ms event history and 25 ms confirmed
+attack-energy ownership are project-specific choices. Candidate detection does
+not itself commit energy ownership; the uncommitted envelope keeps integrating
+until the shape decision. No event-arrival regularity or target-device model
+is used. Supplementary quiet candidates use a causal average of cycle-to-cycle
+variation; event strengths use the confirmed local excess peak against the
+rewound pre-attack envelope rather than the candidate's first half-cycle. No
+new transport field, profile or device calibration
 is used. This path does not alter the existing authored v2 analyzer or scene
 authoring engine. It returns native structured features, not transport packets.
 

@@ -17,8 +17,6 @@ constexpr float kLockConfidence = 0.58F;
 constexpr float kPredictionConfidence = 0.50F;
 constexpr float kDoubleTempoSupportWeight = 0.80F;
 constexpr float kHalfTempoSupportWeight = 0.20F;
-constexpr float kCandidateSwitchRatio = 1.08F;
-constexpr float kOctaveSwitchRatio = 1.12F;
 constexpr float kLockedCandidateSwitchRatio = 1.20F;
 constexpr float kLockedOctaveSwitchRatio = 1.20F;
 constexpr uint32_t kCandidateLockStableEvaluations = 12U;
@@ -442,13 +440,9 @@ void CausalRhythmClock::EvaluateTempo() noexcept {
             }
         } else {
             const bool octaveRelated = IsOctaveRelated(candidateBpm, bestBpm);
-            const float switchRatio = locked_
-                ? (octaveRelated
-                    ? kLockedOctaveSwitchRatio
-                    : kLockedCandidateSwitchRatio)
-                : (octaveRelated
-                    ? kOctaveSwitchRatio
-                    : kCandidateSwitchRatio);
+            const float switchRatio = octaveRelated
+                ? kLockedOctaveSwitchRatio
+                : kLockedCandidateSwitchRatio;
             const uint32_t requiredEvaluations = locked_
                 ? (octaveRelated
                     ? kLockedOctaveSwitchEvaluations
@@ -457,7 +451,10 @@ void CausalRhythmClock::EvaluateTempo() noexcept {
                     ? kOctaveSwitchEvaluations
                     : kCandidateSwitchEvaluations);
             const float candidateScore = combinedScores[candidateTempoIndex_];
-            if (bestScore >= candidateScore * switchRatio) {
+            // Before acquisition, an outscored mode is not stable evidence for
+            // a first lock. Follow a persistent leader using the existing dwell
+            // time; score hysteresis protects only an already established clock.
+            if (!locked_ || bestScore >= candidateScore * switchRatio) {
                 candidateStableEvaluations_ = 0U;
                 const uint32_t challengerBpm =
                     kMinimumBpm + static_cast<uint32_t>(challengerTempoIndex_);
