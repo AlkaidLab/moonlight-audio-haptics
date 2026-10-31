@@ -97,10 +97,16 @@ phone model, preset effect or target-device calibration enters this SDK API.
 
 Detection uses causal half-cycle peak increases, an onset-only upper high-pass
 under strong lower-band energy, and a 64 ms Hann spectral-flatness context for
-stationary broadband noise. It groups candidates for 6 ms before immutable
-publication and retains at most eight recent events for up to 20 ms. Attack
-energy temporarily belongs to the transient rather than being added again as
-continuous body. These rules preserve the tested synthetic rain and steady
+stationary broadband noise. A half-cycle rise only opens a candidate: local excess
+must fall by 25% within 18 ms of the source onset. Grouping lasts at least 6 ms;
+only resolved candidates publish immutable events. There are
+at most eight recent events, retained for up to 20 ms after qualification.
+Pending candidates hold the visible body baseline while its uncommitted envelope
+continues integrating.
+Only confirmed compact components take attack-energy ownership; rejected
+candidates restore that envelope. Filter release without recent PCM energy
+cannot open a new event. These are shape heuristics, not semantic labels or
+device-preset guarantees. The rules preserve the tested synthetic rain and steady
 carriers; they have not yet been validated against a captured real-game corpus.
 
 ## Build and test

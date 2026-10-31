@@ -144,6 +144,7 @@ struct lane_t {
     spectrum_context_t spectrum;
     double low_energy{}, high_energy{};
     double measured_low_energy{}, measured_high_energy{};
+    std::uint64_t input_active_until{};
     double low_level{}, high_level{};
     std::uint64_t low_owned_until{}, high_owned_until{};
     std::array<double, 1536> low_history{}, high_history{};
@@ -156,6 +157,7 @@ struct lane_t {
         upper_peaks = {};
         isolated_upper_peaks = {};
         measured_low_energy = measured_high_energy = 0;
+        input_active_until = 0;
         low_energy = high_energy = low_level = high_level = 0;
         spectrum = {};
         low_owned_until = high_owned_until = 0;
@@ -167,11 +169,23 @@ struct lane_t {
     }
 };
 struct event_t {
+    struct component_t {
+        std::uint64_t created_at{};
+        double background{}, peak{}, held_energy{};
+        float strength{};
+        bool pending{}, isolated{};
+    };
     std::uint32_t id{};
     std::uint64_t time{};
     float left{}, right{}, confidence{1}, sharpness{};
     std::uint64_t created_at{};
-    bool published{};
+    std::uint64_t sealed_at{};
+    std::array<component_t, 4> components{};
+    bool mature(std::uint64_t now) const {
+        return (left > 0 || right > 0) && now - created_at >= 6000 &&
+               std::none_of(components.begin(), components.end(),
+                            [](const auto &component) { return component.pending; });
+    }
 };
 } // namespace
 
@@ -181,10 +195,6 @@ struct AhAuthoredEventEngine {
     unsigned event_count{};
     std::uint32_t epoch{}, frame_sequence{}, event_sequence{}, expected_source{};
     std::uint64_t anchor{}, sample_count{};
-    std::array<std::uint64_t, 2> upper_attack_time{};
-    std::array<bool, 2> upper_attack_seen{};
-    std::array<std::uint64_t, 2> upper_accepted_time{};
-    std::array<bool, 2> upper_accepted_seen{};
     bool active{}, seen_source{};
     void reset(std::uint64_t timestamp) {
         for (auto &lane : lanes)
@@ -192,8 +202,6 @@ struct AhAuthoredEventEngine {
         event_count = 0;
         sample_count = 0;
         anchor = timestamp;
-        upper_attack_seen = {};
-        upper_accepted_seen = {};
         frame_sequence = event_sequence = 0;
         epoch = next_epoch.fetch_add(1);
         if (epoch == 0)
@@ -202,34 +210,41 @@ struct AhAuthoredEventEngine {
     }
     void expire(std::uint64_t now) {
         unsigned kept = 0;
-        for (unsigned i = 0; i < event_count; ++i)
-            if (now >= events[i].created_at && now - events[i].created_at <= history_us)
+        for (unsigned i = 0; i < event_count; ++i) {
+            const auto retained_at = events[i].sealed_at ? events[i].sealed_at : events[i].created_at;
+            if (now >= retained_at && now - retained_at <= history_us)
                 events[kept++] = events[i];
+        }
         event_count = kept;
     }
-    bool add(std::uint64_t time, unsigned lane, float strength, float sharpness, bool upper,
-             std::uint64_t now) {
+    void candidate(std::uint64_t time, unsigned lane, float strength, bool upper,
+                   bool isolated, double background, std::uint64_t now) {
         if (lanes[lane].spectrum.broadband())
-            return false;
-        if (!upper && upper_attack_seen[lane] &&
-            now - upper_attack_time[lane] <= attack_ownership_us)
-            return false;
-        if (upper) {
-            upper_attack_seen[lane] = true;
-            upper_attack_time[lane] = now;
-        }
+            return;
         // Near-simultaneous bands/lanes are one physical attack with two strengths.
         event_t *target = nullptr;
         for (unsigned i = event_count; i > 0; --i) {
             auto &candidate = events[i - 1];
             const auto distance =
                 time > candidate.time ? time - candidate.time : candidate.time - time;
-            if (!candidate.published && now - candidate.created_at < 6000 && distance <= 6000) {
+            // The lower filter's delayed ringing belongs to the same upper-band
+            // attack. Still qualify its shape before giving it body ownership.
+            const auto &upper_component = candidate.components[lane * 2 + 1];
+            if ((!upper && upper_component.strength > 0 &&
+                 now - upper_component.created_at <= attack_ownership_us) ||
+                (!candidate.sealed_at && now - candidate.created_at < 6000 && distance <= 6000)) {
                 target = &candidate;
                 break;
             }
         }
         if (!target) {
+            // Confirmed upper attacks can outlive their redundant event record.
+            // Their lower-filter tail must not open a second point in that gap.
+            if (!upper && now < lanes[lane].high_owned_until)
+                return;
+            // Do not turn a filter's release ringing after PCM stops into a new attack.
+            if (now > lanes[lane].input_active_until)
+                return;
             if (event_count == events.size()) {
                 std::move(events.begin() + 1, events.end(), events.begin());
                 --event_count;
@@ -241,16 +256,57 @@ struct AhAuthoredEventEngine {
             target->confidence = 1;
             target->created_at = now;
         }
-        if (lane == 0)
-            target->left = std::max(target->left, strength);
-        else
-            target->right = std::max(target->right, strength);
-        target->sharpness = std::max(target->sharpness, sharpness);
-        if (upper) {
-            upper_accepted_seen[lane] = true;
-            upper_accepted_time[lane] = now;
+        auto &component = target->components[lane * 2 + (upper ? 1u : 0u)];
+        if (component.pending)
+            return;
+        const auto &history = upper ? lanes[lane].high_history : lanes[lane].low_history;
+        const auto ago = std::min<std::uint64_t>(
+            history.size() - 1, (now - time + 5000) * 48000 / 1000000);
+        component = {now, background, std::max(0.0, strength - background),
+                     history[(lanes[lane].history_position + history.size() - ago) % history.size()],
+                     strength, true, isolated};
+    }
+    void qualify(unsigned lane_index, std::uint64_t now) {
+        auto &lane = lanes[lane_index];
+        for (unsigned i = 0; i < event_count; ++i) {
+            auto &event = events[i];
+            for (unsigned band = 0; band < 2; ++band) {
+                auto &component = event.components[lane_index * 2 + band];
+                if (!component.pending)
+                    continue;
+                const auto &tracker = band == 0 ? lane.lower_peaks :
+                    (component.isolated ? lane.isolated_upper_peaks : lane.upper_peaks);
+                const double excess = std::max(0.0,
+                    std::max(tracker.reference, tracker.peak) - component.background);
+                component.peak = std::max(component.peak, excess);
+                // A falling local excess, rather than the carrier frequency, qualifies
+                // a compact attack. A valley can arrive before the next dense impulse.
+                const bool compact = now - component.created_at >= 2000 &&
+                    component.peak > 0 && excess <= component.peak * 0.75;
+                if (compact) {
+                    if (!event.sealed_at) {
+                        auto &strength = lane_index == 0 ? event.left : event.right;
+                        strength = std::max(strength, component.strength);
+                        event.sharpness = std::max(event.sharpness, band == 0 ? 0.25f : 0.85f);
+                    }
+                    (band == 0 ? lane.low_energy : lane.high_energy) = component.held_energy;
+                    (band == 0 ? lane.low_owned_until : lane.high_owned_until) =
+                        component.created_at + attack_ownership_us;
+                }
+                // Keep the decision inside the existing transport freshness budget.
+                if (compact || now - event.time >= 18000)
+                    component.pending = false;
+            }
         }
-        return true;
+    }
+    double visible_energy(unsigned lane_index, unsigned band) const {
+        double energy = band == 0 ? lanes[lane_index].low_energy : lanes[lane_index].high_energy;
+        for (unsigned i = 0; i < event_count; ++i) {
+            const auto &component = events[i].components[lane_index * 2 + band];
+            if (component.pending)
+                energy = std::min(energy, component.held_energy);
+        }
+        return energy;
     }
 };
 
@@ -327,6 +383,8 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
         for (unsigned lane_index = 0; lane_index < 2; ++lane_index) {
             const double x = pcm[frame * 2 + lane_index] / 32768.0;
             auto &lane = s.lanes[lane_index];
+            if (std::abs(x) >= 0.0035)
+                lane.input_active_until = time + 3000; // Bridge carrier zero crossings.
             raw_energy[lane_index] += x * x;
             raw_peak[lane_index] = std::max(raw_peak[lane_index], std::abs(x));
             const double tactile = lane.tactile.push(x);
@@ -341,9 +399,11 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
                 onset_high = section.push(onset_high);
             std::uint64_t event_time = 0;
             float strength = 0;
+            const double wide_background = lane.upper_peaks.reference;
             const bool wide_onset = lane.upper_peaks.push(high, time, event_time, strength);
             std::uint64_t isolated_time = 0;
             float isolated_strength = 0;
+            const double isolated_background = lane.isolated_upper_peaks.reference;
             const bool isolated_onset =
                 lane.isolated_upper_peaks.push(onset_high, time, isolated_time, isolated_strength);
             if (low_dominant) {
@@ -351,41 +411,35 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
                 strength = isolated_strength;
             }
             if ((low_dominant && isolated_onset) || (!low_dominant && wide_onset)) {
-                if (s.add(event_time, lane_index, strength, 0.85f, true, time)) {
-                    const auto ago = std::min<std::uint64_t>(
-                        lane.high_history.size() - 1, (time - event_time + 5000) * 48000 / 1000000);
-                    lane.high_energy =
-                        lane.high_history[(lane.history_position + lane.high_history.size() - ago) %
-                                          lane.high_history.size()];
-                    lane.high_owned_until = time + attack_ownership_us;
-                }
+                s.candidate(event_time, lane_index, strength, true, low_dominant,
+                            low_dominant ? isolated_background : wide_background, time);
             }
+            const double low_background = lane.lower_peaks.reference;
             if (lane.lower_peaks.push(low, time, event_time, strength)) {
-                if (s.add(event_time, lane_index, strength, 0.25f, false, time) ||
-                    (s.upper_accepted_seen[lane_index] &&
-                     time - s.upper_accepted_time[lane_index] <= attack_ownership_us)) {
-                    const auto ago = std::min<std::uint64_t>(
-                        lane.low_history.size() - 1, (time - event_time + 5000) * 48000 / 1000000);
-                    lane.low_energy =
-                        lane.low_history[(lane.history_position + lane.low_history.size() - ago) %
-                                         lane.low_history.size()];
-                    lane.low_owned_until = time + attack_ownership_us;
-                }
+                s.candidate(event_time, lane_index, strength, false, false, low_background, time);
             }
+            s.qualify(lane_index, time);
             const bool low_owned = time < lane.low_owned_until;
             const bool high_owned = time < lane.high_owned_until;
             if (!low_owned)
                 lane.low_energy += energy_alpha * (low * low - lane.low_energy);
             if (!high_owned)
                 lane.high_energy += energy_alpha * (high * high - lane.high_energy);
-            lane.low_history[lane.history_position] = lane.low_energy;
-            lane.high_history[lane.history_position] = lane.high_energy;
+            const double visible_low = s.visible_energy(lane_index, 0);
+            const double visible_high = s.visible_energy(lane_index, 1);
+            lane.low_history[lane.history_position] = visible_low;
+            lane.high_history[lane.history_position] = visible_high;
             lane.history_position =
                 (lane.history_position + 1) % static_cast<unsigned>(lane.low_history.size());
-            lane.low_level = std::sqrt(std::max(0.0, lane.low_energy));
-            lane.high_level = std::sqrt(std::max(0.0, lane.high_energy));
+            lane.low_level = std::sqrt(std::max(0.0, visible_low));
+            lane.high_level = std::sqrt(std::max(0.0, visible_high));
         }
         ++s.sample_count;
+        // Commit evidence on the sample clock, not the caller's chunk boundary.
+        const auto now = s.anchor + elapsed_us(s.sample_count);
+        for (unsigned i = 0; i < s.event_count; ++i)
+            if (!s.events[i].sealed_at && s.events[i].mature(now))
+                s.events[i].sealed_at = now;
     }
     const auto end_time = s.anchor + elapsed_us(s.sample_count);
     s.expire(end_time);
@@ -394,7 +448,7 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
         s.event_count = 0;
     unsigned mature_count = 0;
     for (unsigned i = 0; i < s.event_count; ++i)
-        if (end_time - s.events[i].created_at >= 6000)
+        if (s.events[i].sealed_at)
             ++mature_count;
     AhAuthoredEventFrame result{};
     result.struct_size = AH_AUTHORED_EVENT_FRAME_V1_SIZE;
@@ -421,11 +475,10 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
     unsigned emitted = 0;
     for (unsigned i = 0; i < s.event_count; ++i) {
         const auto &event = s.events[i];
-        if (end_time - event.created_at < 6000)
+        if (!event.sealed_at)
             continue;
         result.events[emitted++] = {
             event.id, 0, event.time, event.left, event.right, event.confidence, event.sharpness};
-        s.events[i].published = true;
     }
     if (ended)
         s.active = false;

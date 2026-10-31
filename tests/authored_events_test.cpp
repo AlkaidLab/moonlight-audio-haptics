@@ -103,11 +103,11 @@ namespace {
     return pcm;
   }
   void
-  Pulse(std::vector<int16_t> &pcm, double at, unsigned lane) {
+  Pulse(std::vector<int16_t> &pcm, double at, unsigned lane, double amplitude = .12) {
     const auto start = static_cast<unsigned>(std::lround(at * 48000));
     for (unsigned i = 0; i < 2400 && (start + i) * 2 + lane < pcm.size(); ++i) {
       const double t = i / 48000.0;
-      const double value = .12 * (1 - std::exp(-t / .0007)) * std::exp(-t / .006) *
+      const double value = amplitude * (1 - std::exp(-t / .0007)) * std::exp(-t / .006) *
                            std::sin(t * 270 * 6.283185307179586);
       auto &sample = pcm[(start + i) * 2 + lane];
       sample = static_cast<int16_t>(sample + std::lround(value * 32767));
@@ -135,7 +135,10 @@ namespace {
       for (unsigned i = 0; i < frame.event_count; ++i) {
         const auto &event = frame.events[i];
         const auto added = result.events.emplace(event.event_id, event);
-        if (!added.second) {
+        if (added.second) {
+          assert(event.source_time_us <= frame.timestamp_us);
+          assert(frame.timestamp_us - event.source_time_us < 30000);
+        } else {
           const auto &original = added.first->second;
           assert(original.source_time_us == event.source_time_us);
           assert(original.left_strength == event.left_strength &&
@@ -198,6 +201,38 @@ namespace {
     const auto boundaryEnd = Process(boundary.get(), Input(nullptr, 0, 1, AH_AUTHORED_INPUT_STREAM_END));
     assert(boundaryEnd.epoch == nearEnd.epoch && boundaryEnd.frame_sequence == 1);
     assert(boundaryEnd.timestamp_us == UINT64_MAX - 25000);
+  }
+  void
+  CompactAttacksAndSoftBodies() {
+    for (double frequency : { 80., 160., 250., 320. }) {
+      for (double duration : { .003125, .00625, .08, .3 }) {
+        auto pcm = Tone(.8);
+        for (unsigned i = 0; i < static_cast<unsigned>(duration * 48000); ++i) {
+          const double t = i / 48000.0;
+          const double envelope = std::pow(std::sin(t / duration * 3.141592653589793), 2);
+          pcm[(9600 + i) * 2] = pcm[(9600 + i) * 2 + 1] = static_cast<int16_t>(
+            std::lround(.25 * envelope * std::sin(t * frequency * 6.283185307179586) * 32767));
+        }
+        const auto result = Analyze(pcm, 240);
+        assert(result.events.size() == (duration < .01 ? 1u : 0u));
+        assert(Analyze(pcm, 137).events.size() == result.events.size());
+        if (duration == .08 && frequency == 80) {
+          // Rejecting the candidate must restore the envelope, not just remove its click.
+          assert(result.continuous.at(230000)[0] > .01f);
+          assert(result.continuous.at(230000)[2] > .01f);
+        }
+      }
+      assert(Analyze(Tone(.8, frequency, .12), 240).events.empty());
+    }
+    for (double amplitude : { .12, .3 }) {
+      auto pcm = Tone(.7, 250, amplitude);
+      Pulse(pcm, .25, 0, amplitude);
+      // Opposing phase first attenuates the carrier; its recovery is not a point.
+      assert(Analyze(pcm, 240).events.empty());
+    }
+    auto mixed = Tone(.7, 250, .03);
+    Pulse(mixed, .252, 0, .3);
+    assert(Analyze(mixed, 240).events.size() == 1);
   }
   void
   SignalFidelity() {
@@ -269,5 +304,6 @@ namespace {
 int
 main() {
   ApiAndLifecycle();
+  CompactAttacksAndSoftBodies();
   SignalFidelity();
 }
