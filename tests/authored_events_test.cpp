@@ -215,7 +215,15 @@ namespace {
         }
         const auto result = Analyze(pcm, 240);
         assert(result.events.size() == (duration < .01 ? 1u : 0u));
-        assert(Analyze(pcm, 137).events.size() == result.events.size());
+        const auto other = Analyze(pcm, 137);
+        assert(other.events.size() == result.events.size());
+        for (const auto &item : result.events) {
+          const auto &event = item.second;
+          const auto &match = other.events.at(item.first);
+          assert(event.left_strength > 0 && event.right_strength > 0);
+          assert(event.source_time_us == match.source_time_us);
+          assert(event.left_strength == match.left_strength && event.right_strength == match.right_strength);
+        }
         if (duration == .08 && frequency == 80) {
           // Rejecting the candidate must restore the envelope, not just remove its click.
           assert(result.continuous.at(230000)[0] > .01f);
@@ -232,7 +240,18 @@ namespace {
     }
     auto mixed = Tone(.7, 250, .03);
     Pulse(mixed, .252, 0, .3);
-    assert(Analyze(mixed, 240).events.size() == 1);
+    const auto left = Analyze(mixed, 240);
+    auto rightOnly = Tone(.7, 250, .03);
+    Pulse(rightOnly, .252, 1, .15);
+    const auto right = Analyze(rightOnly, 240);
+    Pulse(mixed, .252, 1, .15);
+    const auto stereo = Analyze(mixed, 240);
+    assert(left.events.size() == 1 && right.events.size() == 1 && stereo.events.size() == 1);
+    const auto &asymmetric = stereo.events.begin()->second;
+    assert(asymmetric.left_strength > 0 && asymmetric.right_strength > 0);
+    assert(asymmetric.left_strength != asymmetric.right_strength);
+    assert(asymmetric.left_strength == left.events.begin()->second.left_strength);
+    assert(asymmetric.right_strength == right.events.begin()->second.right_strength);
     float previousStrength = 0;
     for (double amplitude : { .03, .06, .12 }) {
       auto quiet = Tone(.7, 85, .03);
