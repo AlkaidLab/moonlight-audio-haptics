@@ -66,9 +66,9 @@ struct bandpass_t {
 struct peak_tracker_t {
     double previous{}, peak{}, reference{}, attack_peak{};
     double weak_peak{}, weak_floor{}, change_average{};
-    std::uint64_t cycle_start{}, last_attack{}, weak_until{};
+    std::uint64_t cycle_start{}, weak_until{};
     unsigned cycles{};
-    bool have_sample{}, armed{true}, have_attack{};
+    bool have_sample{}, armed{true};
     bool weak_armed{true};
     // Carrier-aligned peaks make a steady sine invariant to chunk alignment.
     bool push(double x, std::uint64_t time, std::uint64_t &event_time, float &strength,
@@ -83,8 +83,6 @@ struct peak_tracker_t {
                 onset = true;
                 event_time = cycle_start;
                 strength = unit(peak);
-                last_attack = time;
-                have_attack = true;
                 attack_peak = peak;
                 armed = false;
             }
@@ -201,7 +199,7 @@ struct event_t {
     };
     std::uint32_t id{};
     std::uint64_t time{};
-    float left{}, right{}, confidence{1}, sharpness{};
+    float left{}, right{}, sharpness{};
     std::array<float, 2> primary_strength{};
     float primary_sharpness{};
     std::uint64_t created_at{};
@@ -281,7 +279,6 @@ struct AhAuthoredEventEngine {
             *target = {};
             target->id = ++event_sequence;
             target->time = time;
-            target->confidence = 1;
             target->created_at = now;
         }
         auto &component = target->components[lane * 2 + (upper ? 1u : 0u)];
@@ -542,7 +539,7 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
         if (!event.sealed_at)
             continue;
         result.events[emitted++] = {
-            event.id, 0, event.time, event.left, event.right, event.confidence, event.sharpness};
+            event.id, 0, event.time, event.left, event.right, 1.0f, event.sharpness};
     }
     if (ended)
         s.active = false;
