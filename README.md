@@ -103,6 +103,10 @@ only resolved candidates publish immutable events. There are
 at most eight recent events, retained for up to 20 ms after qualification.
 Pending candidates hold the visible body baseline while its uncommitted envelope
 continues integrating.
+Quiet candidates also require a rise above recent cycle-to-cycle variation and
+use the full 18 ms decision budget unless a primary attack supersedes them.
+Event strength measures the local excess peak over the pre-attack band envelope
+during confirmation, independently of the first half-cycle that opened a candidate.
 Only confirmed compact components take attack-energy ownership; rejected
 candidates restore that envelope. Filter release without recent PCM energy
 cannot open a new event. These are shape heuristics, not semantic labels or

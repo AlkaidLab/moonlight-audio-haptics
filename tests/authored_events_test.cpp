@@ -233,6 +233,24 @@ namespace {
     auto mixed = Tone(.7, 250, .03);
     Pulse(mixed, .252, 0, .3);
     assert(Analyze(mixed, 240).events.size() == 1);
+    float previousStrength = 0;
+    for (double amplitude : { .03, .06, .12 }) {
+      auto quiet = Tone(.7, 85, .03);
+      Pulse(quiet, .25, 0, amplitude);
+      Pulse(quiet, .25, 1, amplitude);
+      const auto a = Analyze(quiet, 240), b = Analyze(quiet, 137);
+      assert(a.events.size() == 1 && b.events.size() == 1);
+      const auto &event = a.events.begin()->second;
+      const auto &other = b.events.begin()->second;
+      assert(event.left_strength > previousStrength && event.right_strength > 0);
+      assert(event.source_time_us == other.source_time_us);
+      assert(event.left_strength == other.left_strength && event.right_strength == other.right_strength);
+      if (previousStrength > 0) {
+        const auto ratio = event.left_strength / previousStrength;
+        assert(ratio > 1.6f && ratio < 2.4f);
+      }
+      previousStrength = event.left_strength;
+    }
   }
   void
   SignalFidelity() {

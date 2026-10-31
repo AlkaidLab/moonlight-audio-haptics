@@ -48,6 +48,10 @@ candidate grouping, 25% local-excess fall within 18 ms of source onset,
 attack-energy ownership are project-specific choices. Candidate detection does
 not itself commit energy ownership; the uncommitted envelope keeps integrating
 until the shape decision. No event-arrival regularity or target-device model
+is used. Supplementary quiet candidates use a causal average of cycle-to-cycle
+variation; event strengths use the confirmed local excess peak against the
+rewound pre-attack envelope rather than the candidate's first half-cycle. No
+new transport field, profile or device calibration
 is used. This path does not alter the existing authored v2 analyzer or scene
 authoring engine. It returns native structured features, not transport packets.
 
