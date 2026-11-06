@@ -372,10 +372,11 @@ namespace {
     }
     assert(body.level[0] == 0 && body.level[1] == 0);
     assert(observed.measured.low > .001);
-    assert(body.energy[0] == observed.measured.low);
+    // Independently optimized integrations may differ by floating-point rounding.
+    assert(std::abs(body.energy[0] - observed.measured.low) < 1e-12);
     const auto measured = observed.history.before(100000, 100000);
     const auto baseline = body.history.before(100000, 100000);
-    assert(measured.low > .001 && baseline[0] == measured.low);
+    assert(measured.low > .001 && std::abs(baseline[0] - measured.low) < 1e-12);
     // A second candidate must inherit the background, not the first pending
     // candidate's presentation ceiling. Confirmation cannot extend that mute.
     body.claim(0, baseline[0], 100000);
