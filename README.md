@@ -102,9 +102,15 @@ must fall by 25% within 18 ms of the source onset. Grouping lasts at least 6 ms;
 only resolved candidates publish immutable events. There are
 at most eight recent events, retained for up to 20 ms after qualification.
 Pending candidates hold the visible body baseline while its uncommitted envelope
-continues integrating.
+continues integrating. Reconstruction history stores that uncommitted envelope,
+not the temporary presentation ceiling; a later confirmed attack must not inherit
+another pending candidate's temporary mute. Confirmed ownership still applies.
 Quiet candidates also require a rise above recent cycle-to-cycle variation and
 use the full 18 ms decision budget unless a primary attack supersedes them.
+The deadline belongs to the grouped source attack, not each later filter
+half-cycle. Restarting it per component can publish stale events and turn
+continuous beating into points. Recognizing an independent later hit requires
+separate grouping evidence; this change does not widen grouping or freshness.
 Event strength measures the local excess peak over the pre-attack band envelope
 during confirmation, independently of the first half-cycle that opened a candidate.
 Only confirmed compact components take attack-energy ownership; rejected

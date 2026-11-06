@@ -298,8 +298,11 @@ struct attack_evidence_t {
         return result;
     }
 
+    // Components grouped into one attack share its source-time budget. A later
+    // filter half-cycle is not a new independent event and cannot restart the
+    // 18 ms confirmation window (or exceed transport freshness).
     bool advance(const observation_t &observed, unsigned band,
-                 std::uint64_t source_time, std::uint64_t now) {
+                 std::uint64_t group_source_time, std::uint64_t now) {
         if (state != attack_state_t::pending)
             return false;
         const auto &peaks = observed.tracker(band, isolated);
@@ -318,7 +321,7 @@ struct attack_evidence_t {
             decided_at = now;
             return true;
         }
-        if (now - source_time >= 18000) {
+        if (now - group_source_time >= 18000) {
             state = attack_state_t::rejected;
             decided_at = now;
         }
@@ -345,7 +348,11 @@ struct body_decomposition_t {
             visible[band] = std::min(energy[band], pending_ceiling[band]);
             level[band] = std::sqrt(std::max(0.0, visible[band]));
         }
-        history.push(visible);
+        // Pending reservations affect presentation only. Reusing the clamped
+        // output as a later baseline can turn a temporary reservation into a
+        // second ownership hold, even after the first candidate is rejected.
+        // Confirmed ownership still applies to energy before it is remembered.
+        history.push(energy);
     }
 };
 } // namespace moonlight::haptics::authored

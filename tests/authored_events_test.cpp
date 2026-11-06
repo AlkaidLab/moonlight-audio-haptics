@@ -244,6 +244,11 @@ namespace {
     auto mixed = Tone(.7, 250, .03);
     Pulse(mixed, .252, 0, .3);
     const auto left = Analyze(mixed, 240);
+    // Capture a nonzero background through the real engine, including pending
+    // reservation and confirmed ownership around the overlaid attack.
+    for (const auto &sample : left.continuous)
+      if (sample.first >= 240000 && sample.first <= 300000)
+        assert(sample.second[1] > .003f && sample.second[3] > .003f);
     auto rightOnly = Tone(.7, 250, .03);
     Pulse(rightOnly, .252, 1, .15);
     const auto right = Analyze(rightOnly, 240);
@@ -316,6 +321,38 @@ namespace {
             test.phase, matched, result.events.size() - matched);
       assert(matched >= test.min_matched);
       assert(result.events.size() - matched <= test.max_extra);
+      if (test.carrier == 160 && test.background_frequency == 85 &&
+          test.background_amplitude == .01 && test.pulse_amplitude == .03 && test.phase == 0) {
+        auto leftPcm = pcm, rightPcm = pcm;
+        for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+          leftPcm[i * 2 + 1] = 0;
+          rightPcm[i * 2] = 0;
+          rightPcm[i * 2 + 1] /= 2;
+          pcm[i * 2 + 1] = rightPcm[i * 2 + 1];
+        }
+        const auto left = Analyze(leftPcm, 240), right = Analyze(rightPcm, 240);
+        const auto stereo = Analyze(pcm, 240), alternate = Analyze(pcm, 137);
+        assert(stereo.events.size() == 5 && alternate.events.size() == 5);
+        // Halving the entire lane puts two of its onsets below standalone
+        // eligibility. Do not mistake that existing floor for copied strength.
+        assert(left.events.size() == 5 && right.events.size() >= 3 && right.events.size() <= 5);
+        for (const auto &entry : stereo.events) {
+          const auto &event = entry.second;
+          assert(event.left_strength == left.events.at(entry.first).left_strength);
+          assert(left.events.at(entry.first).right_strength == 0);
+          assert(event.right_strength < event.left_strength * .75f);
+          const auto &chunked = alternate.events.at(entry.first);
+          assert(event.left_strength == chunked.left_strength && event.right_strength == chunked.right_strength);
+        }
+        for (const auto &entry : right.events) {
+          assert(entry.second.left_strength == 0);
+          const auto found = std::find_if(stereo.events.begin(), stereo.events.end(), [&](const auto &other) {
+            return std::abs(double(entry.second.source_time_us) - other.second.source_time_us) < 6000;
+          });
+          assert(found != stereo.events.end());
+          assert(std::abs(found->second.right_strength - entry.second.right_strength) < .00001f);
+        }
+      }
     }
   }
 
@@ -337,8 +374,11 @@ namespace {
     assert(observed.measured.low > .001);
     assert(body.energy[0] == observed.measured.low);
     const auto measured = observed.history.before(100000, 100000);
-    const auto hidden = body.history.before(100000, 100000);
-    assert(measured.low > .001 && hidden[0] == 0);
+    const auto baseline = body.history.before(100000, 100000);
+    assert(measured.low > .001 && baseline[0] == measured.low);
+    // A second candidate must inherit the background, not the first pending
+    // candidate's presentation ceiling. Confirmation cannot extend that mute.
+    body.claim(0, baseline[0], 100000);
     body.render({observed.low, observed.high}, 100000, {open, open});
     assert(body.level[0] > .03);
     // Confirmed ownership holds its baseline only for the existing time budget.
@@ -348,6 +388,30 @@ namespace {
     body.render({.1, 0}, 125000, {open, open});
     assert(body.level[0] > 0);
     assert(observed.history.before(100000, 100000).low == measured.low);
+  }
+
+  void
+  GroupedAttackDecisionDeadline() {
+    namespace authored = moonlight::haptics::authored;
+    authored::observation_t observed;
+    observed.history.samples.fill({.001, .001, .002});
+    authored::onset_t onset;
+    onset.time = 20000;
+    onset.upper = onset.weak = onset.independent_rise = true;
+    onset.strength = .03f;
+    onset.background = .01;
+    auto attack = authored::attack_evidence_t::begin(observed, onset, 22000);
+    observed.upper_peaks.reference = observed.upper_peaks.peak = .03;
+    // The same waveform may be an independent onset or a later filter component
+    // of an earlier attack. Grouping, not filter delay, determines its budget.
+    assert(!attack.advance(observed, 1, 10000, 27000));
+    assert(attack.state == authored::attack_state_t::pending);
+    auto rejected = attack;
+    assert(!rejected.advance(observed, 1, 10000, 28000));
+    assert(rejected.state == authored::attack_state_t::rejected);
+    observed.upper_peaks.reference = observed.upper_peaks.peak = .015;
+    assert(attack.advance(observed, 1, onset.time, 37000));
+    assert(attack.state == authored::attack_state_t::confirmed);
   }
 
   void
@@ -371,7 +435,9 @@ namespace {
         assert(result.events.empty());
         assert(Analyze(pcm, 137).events.empty());
         // Suppression must retain the authored continuous texture.
-        assert(result.continuous.at(500000)[1] > .001f);
+        for (const auto &sample : result.continuous)
+          if (sample.first >= 200000 && sample.first <= 1300000)
+            assert(sample.second[1] > .001f && sample.second[3] > .001f);
       }
     }
   }
@@ -448,6 +514,7 @@ main() {
   CompactAttacksAndSoftBodies();
   CrossFrequencyWeakAttacks();
   ObservationAndDecompositionBoundaries();
+  GroupedAttackDecisionDeadline();
   ContinuousCompositeTextures();
   SignalFidelity();
 }
