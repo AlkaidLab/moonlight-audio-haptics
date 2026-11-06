@@ -113,6 +113,40 @@ cannot open a new event. These are shape heuristics, not semantic labels or
 device-preset guarantees. The rules preserve the tested synthetic rain and steady
 carriers; they have not yet been validated against a captured real-game corpus.
 
+Internally, `src/core/authored_signal_analysis.h` separates three stages:
+
+- `observation_t` measures filters, half-cycle peaks, spectrum and unmodified
+  energy history. It does not read candidate decisions or continuous output.
+- `candidate_detector_t` and `attack_evidence_t` propose and resolve attacks
+  from const observations. Candidate state is explicitly absent, pending,
+  confirmed or rejected. Strength uses measured pre-attack band energy, not the
+  temporarily held output envelope.
+- `body_decomposition_t` applies pending ceilings and confirmed ownership to
+  its own continuous envelope/history. It cannot modify detector observations.
+
+The event engine groups source events and publishes immutable results, then
+applies decisions to body decomposition on the same sample clock. Source-time
+lookback, grouping, ownership and transport budgets remain unchanged. Independent
+measurement and body histories use approximately 120 KiB of fixed sample storage
+per engine (96 KiB in the preceding four-history candidate); processing/reset
+still do not allocate.
+
+A compact local shape now has two corroboration paths: a compact total-energy
+burst, or a band-local rise above recent cycle variation in an established
+background. Pre-attack 5 ms / 20 ms energy ratio must be within 0.5..1.5 for the
+latter path, preventing smooth global startup/release from borrowing this weak
+attack exception. These remain engineering heuristics, not calibrated probabilities.
+
+`CrossFrequencyWeakAttacks` covers 96 synthetic tonal-background combinations
+with recall floors and extra-event ceilings recorded from clean SDK `445eaa8`.
+Both 240- and 137-frame chunks must agree. Stage tests also verify that pending
+output suppression does not erase observation history, rejection restores the
+uncommitted envelope, and confirmed ownership ends on its existing deadline.
+This protects baseline recall rather than claiming perfect detection. In the
+companion offline corpus, the refactor restores the identified weak-attack
+regressions while noisy sword-draw false events change from 239 to 243; the
+original clean-SDK baseline was 427. No real-device fidelity claim is implied.
+
 ## Build and test
 
 ```bash

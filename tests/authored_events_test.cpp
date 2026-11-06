@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "moonlight_haptics/authored_events.h"
+#include "core/authored_signal_analysis.h"
+#include "fixtures/authored_weak_attacks.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <new>
@@ -272,6 +275,107 @@ namespace {
     }
   }
   void
+  CrossFrequencyWeakAttacks() {
+    constexpr double tau = 6.283185307179586;
+    const std::array<double, 5> onsets{.4, .65, .9, 1.15, 1.4};
+    for (const auto &test : weak_attack_cases) {
+      auto pcm = Tone(1.8);
+      for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+        const double t = i / 48000.0;
+        const double ramp = std::clamp(std::min((t - .1) / .08, (1.7 - t) / .08), 0.0, 1.0);
+        double sample = std::pow(std::sin(ramp * tau / 4), 2) * test.background_amplitude *
+            std::sin(tau * test.background_frequency * t + test.phase);
+        for (const double at : onsets) {
+          const double local = t - at;
+          if (local >= 0 && local < .05)
+            sample += test.pulse_amplitude * (1 - std::exp(-local / .0007)) *
+                std::exp(-local / .006) * std::sin(tau * test.carrier * local);
+        }
+        pcm[i * 2] = pcm[i * 2 + 1] = static_cast<int16_t>(std::lround(sample * 32767));
+      }
+      const auto result = Analyze(pcm, 240), other = Analyze(pcm, 137);
+      std::array<bool, 5> found{};
+      unsigned matched = 0;
+      for (const auto &item : result.events) {
+        const double time = item.second.source_time_us / 1e6;
+        for (unsigned i = 0; i < onsets.size(); ++i) {
+          if (!found[i] && time >= onsets[i] - .005 && time <= onsets[i] + .030) {
+            found[i] = true;
+            ++matched;
+            break;
+          }
+        }
+        const auto &event = other.events.at(item.first);
+        assert(event.source_time_us == item.second.source_time_us);
+        assert(event.left_strength == item.second.left_strength && event.right_strength == item.second.right_strength);
+      }
+      assert(result.events.size() == other.events.size());
+      if (matched < test.min_matched || result.events.size() - matched > test.max_extra)
+        std::fprintf(stderr, "weak attack: carrier=%g background=%g amplitude=%g pulse=%g phase=%g matched=%u extra=%zu\n",
+            test.carrier, test.background_frequency, test.background_amplitude, test.pulse_amplitude,
+            test.phase, matched, result.events.size() - matched);
+      assert(matched >= test.min_matched);
+      assert(result.events.size() - matched <= test.max_extra);
+    }
+  }
+
+  void
+  ObservationAndDecompositionBoundaries() {
+    namespace authored = moonlight::haptics::authored;
+    authored::observation_t observed;
+    authored::body_decomposition_t body;
+    const auto open = std::numeric_limits<double>::infinity();
+    // A pending reservation hides output, but cannot stop measurement or erase
+    // the uncommitted body envelope. Rejection restores that envelope.
+    for (unsigned i = 0; i < 4800; ++i) {
+      const auto now = uint64_t(i) * 1000000 / 48000;
+      observed.observe(.1 * std::sin(i * 85.0 / 48000 * 6.283185307179586), now);
+      body.render({observed.low, observed.high}, now, {0, 0});
+      observed.remember();
+    }
+    assert(body.level[0] == 0 && body.level[1] == 0);
+    assert(observed.measured.low > .001);
+    assert(body.energy[0] == observed.measured.low);
+    const auto measured = observed.history.before(100000, 100000);
+    const auto hidden = body.history.before(100000, 100000);
+    assert(measured.low > .001 && hidden[0] == 0);
+    body.render({observed.low, observed.high}, 100000, {open, open});
+    assert(body.level[0] > .03);
+    // Confirmed ownership holds its baseline only for the existing time budget.
+    body.claim(0, 0, 100000);
+    body.render({.1, 0}, 124999, {open, open});
+    assert(body.level[0] == 0);
+    body.render({.1, 0}, 125000, {open, open});
+    assert(body.level[0] > 0);
+    assert(observed.history.before(100000, 100000).low == measured.low);
+  }
+
+  void
+  ContinuousCompositeTextures() {
+    // Frequencies/cadences differ from the offline scene corpus. A lower-band
+    // filter valley in a continuous high carrier must not become a point.
+    for (double frequency : {240., 260., 280.}) {
+      for (double amplitude : {.025, .055, .11}) {
+        auto pcm = Tone(1.5);
+        for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+          const double t = i / 48000.0;
+          const double ramp = std::clamp(std::min(t / .08, (1.5 - t) / .08), 0.0, 1.0);
+          const double envelope = std::pow(std::sin(ramp * 1.5707963267948966), 2) *
+              (.65 + .2 * std::sin(t * 3.1 * 6.283185307179586));
+          const double carrier = std::sin(t * frequency * 6.283185307179586 + .7) +
+              .18 * std::sin(t * 105 * 6.283185307179586);
+          pcm[i * 2] = pcm[i * 2 + 1] = static_cast<int16_t>(
+              std::lround(amplitude * envelope * carrier * 32767));
+        }
+        const auto result = Analyze(pcm, 240);
+        assert(result.events.empty());
+        assert(Analyze(pcm, 137).events.empty());
+        // Suppression must retain the authored continuous texture.
+        assert(result.continuous.at(500000)[1] > .001f);
+      }
+    }
+  }
+  void
   SignalFidelity() {
     for (double frequency : { 85., 250., 300. }) {
       const auto result = Analyze(Tone(1, frequency, .12), 240);
@@ -342,5 +446,8 @@ int
 main() {
   ApiAndLifecycle();
   CompactAttacksAndSoftBodies();
+  CrossFrequencyWeakAttacks();
+  ObservationAndDecompositionBoundaries();
+  ContinuousCompositeTextures();
   SignalFidelity();
 }

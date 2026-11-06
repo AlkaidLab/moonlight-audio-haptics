@@ -65,9 +65,14 @@ MOONLIGHT_HAPTICS_API AhStatus ah_authored_events_create(const AhAuthoredConfig 
  * Caller supplies AH_AUTHORED_EVENT_FRAME_V1_SIZE bytes per output slot.
  * BUFFER_TOO_SMALL / invalid input / stale sequence do not consume input.
  * Half-cycle rises are candidates, not event eligibility by themselves. Events
- * require a compact fall in local excess within 18 ms of source onset and at
- * least 6 ms grouping. Unconfirmed attacks remain in the
+ * require a compact fall in local excess within 18 ms of source onset,
+ * corroborated by either a compact energy burst or a new local rise above
+ * established band variation. The latter requires a settled pre-attack energy
+ * context; a global attack/release cannot qualify on local novelty alone.
+ * Events have at least 6 ms grouping. Unconfirmed attacks remain in the
  * continuous envelope; pending decisions temporarily hold its visible baseline.
+ * Observation and strength estimation use unmodified input history; body
+ * reservation/ownership never feeds back into that evidence.
  * This is causal shape evidence, not semantic recognition or an actuator preset.
  * Events remain immutable after publication and may repeat
  * for up to 20 ms after qualification for transport redundancy.
