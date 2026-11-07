@@ -94,6 +94,9 @@ S16LE/flag adaptation, controller routing, capability negotiation
 and wire encoding. Moonlight owns source-time playout, deduplication, actuator
 capabilities and phone/controller arbitration. No controller ID, wire bytes,
 phone model, preset effect or target-device calibration enters this SDK API.
+The enhancement carries no frequency estimate. For continuous rendering,
+Moonlight derives a rough frequency hint from the base frame's trailing
+zero-crossing rate and applies device-specific mapping on the client.
 
 Detection uses causal half-cycle peak increases, an onset-only upper high-pass
 under strong lower-band energy, and a 64 ms Hann spectral-flatness context for

@@ -32,7 +32,7 @@ typedef struct AhAuthoredEvent {
     uint64_t source_time_us;
     float left_strength;  /* Linear local transient peak above its pre-attack band envelope. */
     float right_strength;
-    float confidence; /* Evidence score, not a calibrated probability. */
+    float confidence; /* Profile 1 writes 1.0 for published events; do not use to rank them. */
     float sharpness;
 } AhAuthoredEvent;
 

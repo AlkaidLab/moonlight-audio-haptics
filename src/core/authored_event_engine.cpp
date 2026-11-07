@@ -7,6 +7,7 @@
 namespace {
 using namespace moonlight::haptics::authored;
 constexpr std::uint64_t history_us = 20000;
+constexpr std::uint64_t lower_ringing_merge_us = 25000;
 std::atomic<std::uint32_t> next_epoch{1};
 std::uint64_t elapsed_us(std::uint64_t samples) {
     return samples / 48000 * 1000000 + samples % 48000 * 1000000 / 48000;
@@ -80,7 +81,7 @@ struct AhAuthoredEventEngine {
             const auto distance = onset.time > candidate.time ?
                 onset.time - candidate.time : candidate.time - onset.time;
             const auto &upper = candidate.components[lane_index * 2 + 1].attack;
-            if ((!onset.upper && upper.strength > 0 && now - upper.created_at <= attack_ownership_us) ||
+            if ((!onset.upper && upper.strength > 0 && now - upper.created_at <= lower_ringing_merge_us) ||
                 (!candidate.sealed_at && now - candidate.created_at < 6000 && distance <= 6000)) {
                 target = &candidate;
                 break;
@@ -127,7 +128,7 @@ struct AhAuthoredEventEngine {
                 if (!attack.advance(lane.observed, band, event.time, now))
                     continue;
                 if (band == 1)
-                    lane.upper_attack_until = attack.created_at + attack_ownership_us;
+                    lane.upper_attack_until = attack.created_at + lower_ringing_merge_us;
                 if (!event.sealed_at && !attack.weak) {
                     event.primary_strength[lane_index] =
                         std::max(event.primary_strength[lane_index], unit(attack.strength_peak));
@@ -222,7 +223,7 @@ AhStatus ah_authored_events_process_i16(AhAuthoredEventEngine *engine,
     const auto anchor = reset ? timestamp : s.anchor;
     const auto samples = reset ? 0 : s.sample_count;
     const auto maximum = std::numeric_limits<std::uint64_t>::max();
-    const auto reserve = count ? attack_ownership_us : 0;
+    const auto reserve = count ? std::max(lower_ringing_merge_us, body_decomposition_t::ownership_us) : 0;
     if (anchor > maximum - reserve || samples > maximum - count)
         return AH_STATUS_INVALID_ARGUMENT;
     const auto end_samples = samples + count;

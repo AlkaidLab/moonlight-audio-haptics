@@ -14,7 +14,6 @@ namespace dsp = moonlight::haptics::dsp;
 using dsp::kButterworthFourthOrderQ;
 constexpr double pi = 3.14159265358979323846;
 constexpr double rate = 48000.0;
-constexpr std::uint64_t attack_ownership_us = 25000;
 inline const std::array<double, 128> spectrum_window = [] {
     std::array<double, 128> values{};
     for (unsigned i = 0; i < values.size(); ++i)
@@ -327,13 +326,14 @@ struct attack_evidence_t {
 // Stage 3: apply confirmed ownership and pending reservations to the continuous
 // layer. Its history is only for reconstruction; it never feeds attack evidence.
 struct body_decomposition_t {
+    static constexpr std::uint64_t ownership_us = 25000;
     std::array<double, 2> energy{}, level{};
     std::array<std::uint64_t, 2> owned_until{};
     source_history_t<std::array<double, 2>> history;
 
     void claim(unsigned band, double baseline, std::uint64_t created_at) {
         energy[band] = baseline;
-        owned_until[band] = created_at + attack_ownership_us;
+        owned_until[band] = created_at + ownership_us;
     }
     void render(const std::array<double, 2> &signal, std::uint64_t now,
                 const std::array<double, 2> &pending_ceiling) {
