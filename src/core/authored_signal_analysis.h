@@ -36,7 +36,6 @@ struct biquad_t {
     double push(double x) {
         return dsp::ProcessBiquad(x, coefficients, state);
     }
-    void clear() { state = {}; }
 };
 inline biquad_t filter(double hz, double q, bool high) {
     return {dsp::MakeButterworthSection(2 * pi * hz / rate, q, high), {}};
@@ -52,10 +51,6 @@ struct bandpass_t {
         for (auto &s : sections)
             x = s.push(x);
         return x;
-    }
-    void clear() {
-        for (auto &s : sections)
-            s.clear();
     }
 };
 struct peak_change_t {
@@ -91,7 +86,7 @@ struct peak_tracker_t {
 struct spectrum_context_t {
     std::array<double, 128> samples{};
     unsigned position{}, filled{}, decimation{}, since_update{};
-    double sum{}, flatness{}, flatness_average{}, core_flatness_average{}, concentration{};
+    double sum{}, flatness_average{}, core_flatness_average{}, concentration{};
     void push(double tactile) {
         sum += tactile;
         if (++decimation != 24)
@@ -131,7 +126,7 @@ struct spectrum_context_t {
                 previous_power = power;
             }
         }
-        flatness = arithmetic > 1e-8 ? std::exp(logarithmic / spectrum_coefficients.size()) /
+        const double flatness = arithmetic > 1e-8 ? std::exp(logarithmic / spectrum_coefficients.size()) /
             (arithmetic / spectrum_coefficients.size()) : 0;
         flatness_average += 0.11750309741540454 * (flatness - flatness_average);
         const double core_flatness = core_arithmetic > 1e-8 ?
@@ -332,7 +327,7 @@ struct attack_evidence_t {
 // Stage 3: apply confirmed ownership and pending reservations to the continuous
 // layer. Its history is only for reconstruction; it never feeds attack evidence.
 struct body_decomposition_t {
-    std::array<double, 2> energy{}, visible{}, level{};
+    std::array<double, 2> energy{}, level{};
     std::array<std::uint64_t, 2> owned_until{};
     source_history_t<std::array<double, 2>> history;
 
@@ -345,8 +340,8 @@ struct body_decomposition_t {
         for (unsigned band = 0; band < 2; ++band) {
             if (now >= owned_until[band])
                 energy[band] += energy_alpha * (signal[band] * signal[band] - energy[band]);
-            visible[band] = std::min(energy[band], pending_ceiling[band]);
-            level[band] = std::sqrt(std::max(0.0, visible[band]));
+            const double visible = std::min(energy[band], pending_ceiling[band]);
+            level[band] = std::sqrt(std::max(0.0, visible));
         }
         // Pending reservations affect presentation only. Reusing the clamped
         // output as a later baseline can turn a temporary reservation into a
