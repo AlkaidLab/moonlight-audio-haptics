@@ -176,6 +176,8 @@ if(MOONLIGHT_HAPTICS_BUILD_TESTS)
 
     add_executable(moonlight_haptics_authored_events_test
         tests/authored_events_test.cpp)
+    target_include_directories(moonlight_haptics_authored_events_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(moonlight_haptics_authored_events_test
         PRIVATE moonlight_haptics_core)
     moonlight_haptics_enable_test_assertions(moonlight_haptics_authored_events_test)

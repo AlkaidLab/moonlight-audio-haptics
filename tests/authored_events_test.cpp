@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "moonlight_haptics/authored_events.h"
+#include "core/authored_signal_analysis.h"
+#include "fixtures/authored_weak_attacks.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <new>
@@ -241,6 +244,11 @@ namespace {
     auto mixed = Tone(.7, 250, .03);
     Pulse(mixed, .252, 0, .3);
     const auto left = Analyze(mixed, 240);
+    // Capture a nonzero background through the real engine, including pending
+    // reservation and confirmed ownership around the overlaid attack.
+    for (const auto &sample : left.continuous)
+      if (sample.first >= 240000 && sample.first <= 300000)
+        assert(sample.second[1] > .003f && sample.second[3] > .003f);
     auto rightOnly = Tone(.7, 250, .03);
     Pulse(rightOnly, .252, 1, .15);
     const auto right = Analyze(rightOnly, 240);
@@ -269,6 +277,169 @@ namespace {
         assert(ratio > 1.6f && ratio < 2.4f);
       }
       previousStrength = event.left_strength;
+    }
+  }
+  void
+  CrossFrequencyWeakAttacks() {
+    constexpr double tau = 6.283185307179586;
+    const std::array<double, 5> onsets{.4, .65, .9, 1.15, 1.4};
+    for (const auto &test : weak_attack_cases) {
+      auto pcm = Tone(1.8);
+      for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+        const double t = i / 48000.0;
+        const double ramp = std::clamp(std::min((t - .1) / .08, (1.7 - t) / .08), 0.0, 1.0);
+        double sample = std::pow(std::sin(ramp * tau / 4), 2) * test.background_amplitude *
+            std::sin(tau * test.background_frequency * t + test.phase);
+        for (const double at : onsets) {
+          const double local = t - at;
+          if (local >= 0 && local < .05)
+            sample += test.pulse_amplitude * (1 - std::exp(-local / .0007)) *
+                std::exp(-local / .006) * std::sin(tau * test.carrier * local);
+        }
+        pcm[i * 2] = pcm[i * 2 + 1] = static_cast<int16_t>(std::lround(sample * 32767));
+      }
+      const auto result = Analyze(pcm, 240), other = Analyze(pcm, 137);
+      std::array<bool, 5> found{};
+      unsigned matched = 0;
+      for (const auto &item : result.events) {
+        const double time = item.second.source_time_us / 1e6;
+        for (unsigned i = 0; i < onsets.size(); ++i) {
+          if (!found[i] && time >= onsets[i] - .005 && time <= onsets[i] + .030) {
+            found[i] = true;
+            ++matched;
+            break;
+          }
+        }
+        const auto &event = other.events.at(item.first);
+        assert(event.source_time_us == item.second.source_time_us);
+        assert(event.left_strength == item.second.left_strength && event.right_strength == item.second.right_strength);
+      }
+      assert(result.events.size() == other.events.size());
+      if (matched < test.min_matched || result.events.size() - matched > test.max_extra)
+        std::fprintf(stderr, "weak attack: carrier=%g background=%g amplitude=%g pulse=%g phase=%g matched=%u extra=%zu\n",
+            test.carrier, test.background_frequency, test.background_amplitude, test.pulse_amplitude,
+            test.phase, matched, result.events.size() - matched);
+      assert(matched >= test.min_matched);
+      assert(result.events.size() - matched <= test.max_extra);
+      if (test.carrier == 160 && test.background_frequency == 85 &&
+          test.background_amplitude == .01 && test.pulse_amplitude == .03 && test.phase == 0) {
+        auto leftPcm = pcm, rightPcm = pcm;
+        for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+          leftPcm[i * 2 + 1] = 0;
+          rightPcm[i * 2] = 0;
+          rightPcm[i * 2 + 1] /= 2;
+          pcm[i * 2 + 1] = rightPcm[i * 2 + 1];
+        }
+        const auto left = Analyze(leftPcm, 240), right = Analyze(rightPcm, 240);
+        const auto stereo = Analyze(pcm, 240), alternate = Analyze(pcm, 137);
+        assert(stereo.events.size() == 5 && alternate.events.size() == 5);
+        // Halving the entire lane puts two of its onsets below standalone
+        // eligibility. Do not mistake that existing floor for copied strength.
+        assert(left.events.size() == 5 && right.events.size() >= 3 && right.events.size() <= 5);
+        for (const auto &entry : stereo.events) {
+          const auto &event = entry.second;
+          assert(event.left_strength == left.events.at(entry.first).left_strength);
+          assert(left.events.at(entry.first).right_strength == 0);
+          assert(event.right_strength < event.left_strength * .75f);
+          const auto &chunked = alternate.events.at(entry.first);
+          assert(event.left_strength == chunked.left_strength && event.right_strength == chunked.right_strength);
+        }
+        for (const auto &entry : right.events) {
+          assert(entry.second.left_strength == 0);
+          const auto found = std::find_if(stereo.events.begin(), stereo.events.end(), [&](const auto &other) {
+            return std::abs(double(entry.second.source_time_us) - other.second.source_time_us) < 6000;
+          });
+          assert(found != stereo.events.end());
+          assert(std::abs(found->second.right_strength - entry.second.right_strength) < .00001f);
+        }
+      }
+    }
+  }
+
+  void
+  ObservationAndDecompositionBoundaries() {
+    namespace authored = moonlight::haptics::authored;
+    authored::observation_t observed;
+    authored::body_decomposition_t body;
+    const auto open = std::numeric_limits<double>::infinity();
+    // A pending reservation hides output, but cannot stop measurement or erase
+    // the uncommitted body envelope. Rejection restores that envelope.
+    for (unsigned i = 0; i < 4800; ++i) {
+      const auto now = uint64_t(i) * 1000000 / 48000;
+      observed.observe(.1 * std::sin(i * 85.0 / 48000 * 6.283185307179586), now);
+      body.render({observed.low, observed.high}, now, {0, 0});
+      observed.remember();
+    }
+    assert(body.level[0] == 0 && body.level[1] == 0);
+    assert(observed.measured.low > .001);
+    // Independently optimized integrations may differ by floating-point rounding.
+    assert(std::abs(body.energy[0] - observed.measured.low) < 1e-12);
+    const auto measured = observed.history.before(100000, 100000);
+    const auto baseline = body.history.before(100000, 100000);
+    assert(measured.low > .001 && std::abs(baseline[0] - measured.low) < 1e-12);
+    // A second candidate must inherit the background, not the first pending
+    // candidate's presentation ceiling. Confirmation cannot extend that mute.
+    body.claim(0, baseline[0], 100000);
+    body.render({observed.low, observed.high}, 100000, {open, open});
+    assert(body.level[0] > .03);
+    // Confirmed ownership holds its baseline only for the existing time budget.
+    body.claim(0, 0, 100000);
+    body.render({.1, 0}, 124999, {open, open});
+    assert(body.level[0] == 0);
+    body.render({.1, 0}, 125000, {open, open});
+    assert(body.level[0] > 0);
+    assert(observed.history.before(100000, 100000).low == measured.low);
+  }
+
+  void
+  GroupedAttackDecisionDeadline() {
+    namespace authored = moonlight::haptics::authored;
+    authored::observation_t observed;
+    observed.history.samples.fill({.001, .001, .002});
+    authored::onset_t onset;
+    onset.time = 20000;
+    onset.upper = onset.weak = onset.independent_rise = true;
+    onset.strength = .03f;
+    onset.background = .01;
+    auto attack = authored::attack_evidence_t::begin(observed, onset, 22000);
+    observed.upper_peaks.reference = observed.upper_peaks.peak = .03;
+    // The same waveform may be an independent onset or a later filter component
+    // of an earlier attack. Grouping, not filter delay, determines its budget.
+    assert(!attack.advance(observed, 1, 10000, 27000));
+    assert(attack.state == authored::attack_state_t::pending);
+    auto rejected = attack;
+    assert(!rejected.advance(observed, 1, 10000, 28000));
+    assert(rejected.state == authored::attack_state_t::rejected);
+    observed.upper_peaks.reference = observed.upper_peaks.peak = .015;
+    assert(attack.advance(observed, 1, onset.time, 37000));
+    assert(attack.state == authored::attack_state_t::confirmed);
+  }
+
+  void
+  ContinuousCompositeTextures() {
+    // Frequencies/cadences differ from the offline scene corpus. A lower-band
+    // filter valley in a continuous high carrier must not become a point.
+    for (double frequency : {240., 260., 280.}) {
+      for (double amplitude : {.025, .055, .11}) {
+        auto pcm = Tone(1.5);
+        for (unsigned i = 0; i < pcm.size() / 2; ++i) {
+          const double t = i / 48000.0;
+          const double ramp = std::clamp(std::min(t / .08, (1.5 - t) / .08), 0.0, 1.0);
+          const double envelope = std::pow(std::sin(ramp * 1.5707963267948966), 2) *
+              (.65 + .2 * std::sin(t * 3.1 * 6.283185307179586));
+          const double carrier = std::sin(t * frequency * 6.283185307179586 + .7) +
+              .18 * std::sin(t * 105 * 6.283185307179586);
+          pcm[i * 2] = pcm[i * 2 + 1] = static_cast<int16_t>(
+              std::lround(amplitude * envelope * carrier * 32767));
+        }
+        const auto result = Analyze(pcm, 240);
+        assert(result.events.empty());
+        assert(Analyze(pcm, 137).events.empty());
+        // Suppression must retain the authored continuous texture.
+        for (const auto &sample : result.continuous)
+          if (sample.first >= 200000 && sample.first <= 1300000)
+            assert(sample.second[1] > .001f && sample.second[3] > .001f);
+      }
     }
   }
   void
@@ -342,5 +513,9 @@ int
 main() {
   ApiAndLifecycle();
   CompactAttacksAndSoftBodies();
+  CrossFrequencyWeakAttacks();
+  ObservationAndDecompositionBoundaries();
+  GroupedAttackDecisionDeadline();
+  ContinuousCompositeTextures();
   SignalFidelity();
 }
